@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+
+# macOS
+.DS_Store
+.AppleDouble
+__MACOSX
+
+# IntelliJ / JetBrains
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Editor backup files
+*.tmp
+*.bak
+*~
+
+# Environment / secrets
+.env
+.env.local
+.env.*
+
+# AI sandbox workspace metadata
+.ai-sandbox/
+
+# Internal docs and notes (not for public repo)
+docs/

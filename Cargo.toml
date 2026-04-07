@@ -1,0 +1,29 @@
+[package]
+name = "chuch-terminal"
+version = "0.4.3"
+edition = "2021"
+rust-version = "1.78"
+description = "A minimal, beautiful terminal text editor"
+license = "MIT"
+authors = ["chuch"]
+repository = "https://github.com/OWNER/chuch-terminal-cli"
+homepage = "https://github.com/OWNER/chuch-terminal-cli"
+keywords = ["editor", "terminal", "tui", "text-editor", "cli"]
+categories = ["command-line-utilities", "text-editors"]
+
+[[bin]]
+name = "chuch-term"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.28"
+ratatui = "0.29"
+unicode-segmentation = "1"
+unicode-width = "0.2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "5"
+base64 = "0.22"
