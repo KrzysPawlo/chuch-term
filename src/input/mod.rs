@@ -544,6 +544,72 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         LowercaseSelection => {
             apply_selection_transform(state, |text| text.to_lowercase());
         }
+
+        WordLeft => {
+            state.selection_anchor = None;
+            let (row, col) = word_left_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            state.cursor = Cursor { row, col };
+        }
+
+        WordRight => {
+            state.selection_anchor = None;
+            let (row, col) = word_right_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            state.cursor = Cursor { row, col };
+        }
+
+        ShiftWordLeft => {
+            if state.selection_anchor.is_none() {
+                state.selection_anchor = Some(state.cursor);
+            }
+            let (row, col) = word_left_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            state.cursor = Cursor { row, col };
+        }
+
+        ShiftWordRight => {
+            if state.selection_anchor.is_none() {
+                state.selection_anchor = Some(state.cursor);
+            }
+            let (row, col) = word_right_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            state.cursor = Cursor { row, col };
+        }
+
+        DeleteWordBefore => {
+            let cursor_before = state.cursor;
+            let (target_row, target_col) =
+                word_left_pos(&state.buffer.lines, cursor_before.row, cursor_before.col);
+            if (target_row, target_col) != (cursor_before.row, cursor_before.col) {
+                let old_text = state
+                    .buffer
+                    .text_in_range((target_row, target_col), (cursor_before.row, cursor_before.col));
+                let change = build_change_with_cursor(
+                    (target_row, target_col),
+                    old_text,
+                    String::new(),
+                    cursor_before,
+                    Cursor { row: target_row, col: target_col },
+                );
+                apply_and_record_change(state, change, false);
+            }
+        }
+
+        DeleteWordAfter => {
+            let cursor_before = state.cursor;
+            let (target_row, target_col) =
+                word_right_pos(&state.buffer.lines, cursor_before.row, cursor_before.col);
+            if (target_row, target_col) != (cursor_before.row, cursor_before.col) {
+                let old_text = state
+                    .buffer
+                    .text_in_range((cursor_before.row, cursor_before.col), (target_row, target_col));
+                let change = build_change_with_cursor(
+                    (cursor_before.row, cursor_before.col),
+                    old_text,
+                    String::new(),
+                    cursor_before,
+                    Cursor { row: cursor_before.row, col: cursor_before.col },
+                );
+                apply_and_record_change(state, change, false);
+            }
+        }
     }
 
     Ok(())
@@ -706,6 +772,70 @@ fn build_replace_all_text(
     full_text
 }
 
+/// Move one word to the left: skip whitespace left, then skip non-whitespace left.
+/// Crosses line boundaries when the cursor is at column 0.
+fn word_left_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
+    if col == 0 {
+        if row == 0 {
+            return (0, 0);
+        }
+        let prev_row = row - 1;
+        let prev_len = lines[prev_row].len();
+        if prev_len == 0 {
+            return (prev_row, 0);
+        }
+        return word_left_pos(lines, prev_row, prev_len);
+    }
+    let line = &lines[row];
+    let mut pos = col;
+    // Skip whitespace left
+    while pos > 0 {
+        let prev = prev_char_boundary(line, pos);
+        if line[prev..pos].chars().next().is_some_and(|c| c.is_whitespace()) {
+            pos = prev;
+        } else {
+            break;
+        }
+    }
+    // Skip non-whitespace left
+    while pos > 0 {
+        let prev = prev_char_boundary(line, pos);
+        if line[prev..pos].chars().next().is_some_and(|c| c.is_whitespace()) {
+            break;
+        }
+        pos = prev;
+    }
+    (row, pos)
+}
+
+/// Move one word to the right: skip non-whitespace right, then skip whitespace right.
+/// Crosses line boundaries when the cursor is at end of line.
+fn word_right_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
+    let line = &lines[row];
+    if col >= line.len() {
+        if row + 1 >= lines.len() {
+            return (row, col);
+        }
+        return (row + 1, 0);
+    }
+    let mut pos = col;
+    // Skip non-whitespace right
+    while pos < line.len() {
+        if line[pos..].chars().next().is_some_and(|c| c.is_whitespace()) {
+            break;
+        }
+        pos = next_char_boundary(line, pos);
+    }
+    // Skip whitespace right
+    while pos < line.len() {
+        if line[pos..].chars().next().is_some_and(|c| !c.is_whitespace()) {
+            break;
+        }
+        pos = next_char_boundary(line, pos);
+    }
+    (row, pos)
+}
+
 fn clamp_cursor_to_buffer(state: &mut EditorState) {
     let max_row = state.buffer.line_count().saturating_sub(1);
     state.cursor.row = state.cursor.row.min(max_row);
@@ -847,5 +977,143 @@ mod tests {
         let line = state.buffer.line(0);
         assert!(state.cursor.col <= line.len());
         assert!(line.is_char_boundary(state.cursor.col));
+    }
+
+    // ── Word navigation helpers ───────────────────────────────────────────
+
+    fn lines(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn word_left_from_middle_of_word() {
+        // "hello world" — cursor at 'r' of "world" (col 8) → start of "world" (col 6)
+        let ls = lines(&["hello world"]);
+        assert_eq!(word_left_pos(&ls, 0, 8), (0, 6));
+    }
+
+    #[test]
+    fn word_left_from_start_of_word_skips_to_prev() {
+        // cursor at 'w' (col 6) → start of "hello" (col 0)
+        let ls = lines(&["hello world"]);
+        assert_eq!(word_left_pos(&ls, 0, 6), (0, 0));
+    }
+
+    #[test]
+    fn word_left_at_buffer_start_stays() {
+        let ls = lines(&["hello"]);
+        assert_eq!(word_left_pos(&ls, 0, 0), (0, 0));
+    }
+
+    #[test]
+    fn word_left_crosses_line_boundary() {
+        // line 0: "hello", line 1: "" cursor col 0 → (0, 0) because prev line is empty
+        let ls = lines(&["hello", ""]);
+        assert_eq!(word_left_pos(&ls, 1, 0), (0, 0));
+    }
+
+    #[test]
+    fn word_left_crosses_line_boundary_to_word() {
+        // line 0: "hello world", line 1: cursor col 0 → start of "world" on line 0
+        let ls = lines(&["hello world", "next"]);
+        assert_eq!(word_left_pos(&ls, 1, 0), (0, 6));
+    }
+
+    #[test]
+    fn word_right_from_middle_of_word() {
+        // "hello world" — cursor at 'e' (col 1) → start of "world" (col 6)
+        let ls = lines(&["hello world"]);
+        assert_eq!(word_right_pos(&ls, 0, 1), (0, 6));
+    }
+
+    #[test]
+    fn word_right_from_whitespace() {
+        // cursor at space (col 5) → start of "world" (col 6)
+        let ls = lines(&["hello world"]);
+        assert_eq!(word_right_pos(&ls, 0, 5), (0, 6));
+    }
+
+    #[test]
+    fn word_right_at_end_of_line_crosses_boundary() {
+        // cursor at end of line 0 → (1, 0)
+        let ls = lines(&["hello", "world"]);
+        assert_eq!(word_right_pos(&ls, 0, 5), (1, 0));
+    }
+
+    #[test]
+    fn word_right_at_buffer_end_stays() {
+        let ls = lines(&["hello"]);
+        assert_eq!(word_right_pos(&ls, 0, 5), (0, 5));
+    }
+
+    // ── Word navigation actions ───────────────────────────────────────────
+
+    #[test]
+    fn word_left_action_moves_cursor() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 8 }; // inside "world"
+        apply_action(&mut state, AppAction::WordLeft).expect("word left");
+        assert_eq!(state.cursor, Cursor { row: 0, col: 6 });
+        assert!(state.selection_anchor.is_none());
+    }
+
+    #[test]
+    fn word_right_action_moves_cursor() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 0 }; // start of "hello"
+        apply_action(&mut state, AppAction::WordRight).expect("word right");
+        assert_eq!(state.cursor, Cursor { row: 0, col: 6 }); // start of "world"
+    }
+
+    #[test]
+    fn shift_word_right_extends_selection() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        apply_action(&mut state, AppAction::ShiftWordRight).expect("shift word right");
+        assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 6 });
+    }
+
+    #[test]
+    fn delete_word_before_removes_previous_word() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 11 }; // end of "world"
+        apply_action(&mut state, AppAction::DeleteWordBefore).expect("delete word before");
+        assert_eq!(state.buffer.lines, vec!["hello ".to_string()]);
+        assert_eq!(state.cursor, Cursor { row: 0, col: 6 });
+    }
+
+    #[test]
+    fn delete_word_after_removes_next_word() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 6 }; // start of "world"
+        apply_action(&mut state, AppAction::DeleteWordAfter).expect("delete word after");
+        assert_eq!(state.buffer.lines, vec!["hello ".to_string()]);
+        assert_eq!(state.cursor, Cursor { row: 0, col: 6 });
+    }
+
+    #[test]
+    fn delete_word_before_is_undoable() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 11 };
+        apply_action(&mut state, AppAction::DeleteWordBefore).expect("delete");
+        apply_action(&mut state, AppAction::Undo).expect("undo");
+        assert_eq!(state.buffer.lines, vec!["hello world".to_string()]);
+    }
+
+    #[test]
+    fn delete_word_before_at_buffer_start_does_nothing() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        apply_action(&mut state, AppAction::DeleteWordBefore).expect("noop");
+        assert_eq!(state.buffer.lines, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn delete_word_after_at_buffer_end_does_nothing() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 5 };
+        apply_action(&mut state, AppAction::DeleteWordAfter).expect("noop");
+        assert_eq!(state.buffer.lines, vec!["hello".to_string()]);
     }
 }

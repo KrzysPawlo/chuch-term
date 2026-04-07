@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-08
+
+### Added
+- Word navigation — `Ctrl+Left` / `Ctrl+Right` jump to previous / next word; works across line boundaries
+- `Ctrl+Shift+Left` / `Ctrl+Shift+Right` extend the selection by word
+- Delete word — `Ctrl+W` deletes the word before the cursor (like readline); `Ctrl+Delete` deletes the word after
+
 ## [0.4.4] - 2026-04-08
 
 ### Added

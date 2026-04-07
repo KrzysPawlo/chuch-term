@@ -102,6 +102,16 @@ pub enum AppAction {
     // Case change
     UppercaseSelection,   // Alt+U
     LowercaseSelection,   // Alt+L
+
+    // Word navigation
+    WordLeft,             // Ctrl+Left
+    WordRight,            // Ctrl+Right
+    ShiftWordLeft,        // Ctrl+Shift+Left
+    ShiftWordRight,       // Ctrl+Shift+Right
+
+    // Delete word
+    DeleteWordBefore,     // Ctrl+W
+    DeleteWordAfter,      // Ctrl+Delete
 }
 
 /// Map a raw key event + current editor mode to a semantic AppAction.
@@ -220,6 +230,12 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                     KeyCode::Char('n') => AppAction::SearchNext,
                     KeyCode::Char('o') => AppAction::GoBackBuffer,
                     KeyCode::Char('r') => AppAction::StartReplace,
+                    KeyCode::Char('w') => AppAction::DeleteWordBefore,
+                    KeyCode::Left if shift => AppAction::ShiftWordLeft,
+                    KeyCode::Right if shift => AppAction::ShiftWordRight,
+                    KeyCode::Left => AppAction::WordLeft,
+                    KeyCode::Right => AppAction::WordRight,
+                    KeyCode::Delete => AppAction::DeleteWordAfter,
                     _ => AppAction::Noop,
                 }
             } else if shift {

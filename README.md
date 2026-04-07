@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.4.4-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.0-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -89,6 +89,7 @@ chuch-term myfile.txt
 | `↑ ↓ ← →` | Move cursor |
 | `Home` / `End` | Start / end of line |
 | `PgUp` / `PgDn` | Scroll page |
+| `Ctrl+←` / `Ctrl+→` | Jump word left / right |
 | `Ctrl+G` | Go to line number |
 
 ### Editing
@@ -99,6 +100,8 @@ chuch-term myfile.txt
 | `Enter` | New line |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
+| `Ctrl+W` | Delete word before cursor |
+| `Ctrl+Delete` | Delete word after cursor |
 | `Alt+U` | UPPERCASE selection |
 | `Alt+L` | lowercase selection |
 
@@ -117,6 +120,7 @@ chuch-term myfile.txt
 | Key | Action |
 |-----|--------|
 | `Shift+↑↓←→` | Extend selection |
+| `Ctrl+Shift+←/→` | Extend selection by word |
 | `Ctrl+A` | Select all |
 | `Ctrl+C / X / V` | Copy / Cut / Paste |
 
