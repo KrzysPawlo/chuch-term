@@ -1,6 +1,7 @@
 pub mod go;
 pub mod js;
 pub mod markdown;
+pub mod proto;
 pub mod python;
 pub mod rust;
 pub mod shell;

@@ -1,13 +1,13 @@
 [package]
 name = "chuch-terminal"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 rust-version = "1.78"
 description = "A minimal, beautiful terminal text editor"
 license = "MIT"
 authors = ["chuch"]
-repository = "https://github.com/OWNER/chuch-terminal-cli"
-homepage = "https://github.com/OWNER/chuch-terminal-cli"
+repository = "https://github.com/KrzysPawlo/chuch-term"
+homepage = "https://github.com/KrzysPawlo/chuch-term"
 keywords = ["editor", "terminal", "tui", "text-editor", "cli"]
 categories = ["command-line-utilities", "text-editors"]
 

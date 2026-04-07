@@ -47,6 +47,7 @@ fn language_name(lang: Language) -> Option<&'static str> {
         Language::Yaml => Some("YAML"),
         Language::Shell => Some("Shell"),
         Language::Markdown => Some("Markdown"),
+        Language::Proto => Some("Proto3"),
         Language::Plain => None,
     }
 }

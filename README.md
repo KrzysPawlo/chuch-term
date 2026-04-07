@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.4.3-b0c4c8)
+![version](https://img.shields.io/badge/version-0.4.4-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -30,7 +30,7 @@ chuch-term hits the middle ground: **everything you need for daily editing**, no
 
 ### Pre-built binary (fastest)
 
-Download from [GitHub Releases](https://github.com/OWNER/chuch-terminal-cli/releases/latest):
+Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
 
 | Platform | File |
 |----------|------|
@@ -40,14 +40,14 @@ Download from [GitHub Releases](https://github.com/OWNER/chuch-terminal-cli/rele
 
 ```bash
 # Replace ASSET with the filename for your platform:
-curl -fsSL https://github.com/OWNER/chuch-terminal-cli/releases/latest/download/ASSET.tar.gz | tar xz
+curl -fsSL https://github.com/KrzysPawlo/chuch-term/releases/latest/download/ASSET.tar.gz | tar xz
 sudo mv chuch-term /usr/local/bin/
 ```
 
 ### cargo install
 
 ```bash
-cargo install --git https://github.com/OWNER/chuch-terminal-cli
+cargo install --git https://github.com/KrzysPawlo/chuch-term
 ```
 
 Get Rust: [rustup.rs](https://rustup.rs)
@@ -67,7 +67,7 @@ chuch-term myfile.txt
 
 ## Features
 
-- **Syntax highlighting** — Rust, Python, JavaScript/TypeScript, Go, TOML, YAML, Shell, Markdown
+- **Syntax highlighting** — Rust, Python, JavaScript/TypeScript, Go, TOML, YAML, Shell, Markdown, Proto3
 - **Find & Replace** — incremental search with live match count, replace one or all
 - **Undo / Redo** — unlimited history with smart word-level coalescing
 - **Text selection** — Shift+arrows, Ctrl+A; Copy/Cut/Paste with system clipboard

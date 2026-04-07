@@ -24,6 +24,7 @@ pub enum Language {
     Yaml,
     Shell,
     Markdown,
+    Proto,
     Plain,
 }
 
@@ -41,6 +42,7 @@ pub fn detect_language(file_path: Option<&std::path::Path>) -> Language {
         "yaml" | "yml" => Language::Yaml,
         "sh" | "bash" | "zsh" => Language::Shell,
         "md" | "markdown" => Language::Markdown,
+        "proto" => Language::Proto,
         _ => Language::Plain,
     }
 }
@@ -55,6 +57,7 @@ pub fn highlight_line(line: &str, lang: Language) -> Vec<SyntaxToken> {
         Language::Yaml => languages::yaml::highlight(line),
         Language::Shell => languages::shell::highlight(line),
         Language::Markdown => languages::markdown::highlight(line),
+        Language::Proto => languages::proto::highlight(line),
         Language::Plain => vec![],
     }
 }

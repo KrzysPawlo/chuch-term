@@ -1,0 +1,139 @@
+name: Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  # ── CI — runs on every push and PR ────────────────────────────────────
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
+  lint:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --locked -- -D warnings
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  # ── Release — runs only on version tags (v*.*.*) ──────────────────────
+
+  build:
+    name: Build / ${{ matrix.asset }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, lint, audit]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            asset: linux-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            asset: macos-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            asset: macos-intel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf chuch-term-${{ matrix.asset }}.tar.gz chuch-term
+          mv chuch-term-${{ matrix.asset }}.tar.gz ../../../
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chuch-term-${{ matrix.asset }}
+          path: chuch-term-${{ matrix.asset }}.tar.gz
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            **macOS Apple Silicon:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-arm.tar.gz | tar xz
+            sudo mv chuch-term /usr/local/bin/
+            ```
+
+            **macOS Intel:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-intel.tar.gz | tar xz
+            sudo mv chuch-term /usr/local/bin/
+            ```
+
+            **Linux x86_64:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-linux-x86_64.tar.gz | tar xz
+            sudo mv chuch-term /usr/local/bin/
+            ```
+
+            **cargo install:**
+            ```bash
+            cargo install --git https://github.com/${{ github.repository }}
+            ```

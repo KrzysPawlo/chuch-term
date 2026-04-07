@@ -7,6 +7,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-04-08
+
+### Added
+- Proto3 syntax highlighting — keywords (`message`, `service`, `rpc`, `enum`, `oneof`, `repeated`, `map`, `reserved`, `stream`, `import`, `package`, `option`, `syntax`, `returns`, `extend`), scalar types (`int32`, `int64`, `uint32`, `uint64`, `sint32`, `sint64`, `fixed32`, `fixed64`, `sfixed32`, `sfixed64`, `float`, `double`, `bool`, `string`, `bytes`), field numbers, string literals, line comments
+- Status bar shows `Proto3` for `.proto` files
+
+### Changed
+- CI/CD consolidated from two separate workflow files into one `pipeline.yml` — CI jobs (Test, Clippy, Audit) run on every push; Build + Release jobs run only on version tags
+- README: added Proto3 to the syntax highlighting feature list
+
+### Fixed
+- macOS Intel build runner changed from deprecated `macos-13` to `macos-latest` with cross-compilation — all three platform binaries now build correctly
+
 ## [0.4.3] - 2026-04-08
 
 ### Added
