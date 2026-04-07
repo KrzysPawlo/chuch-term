@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.1-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.2-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -62,6 +62,44 @@ cp target/release/chuch-term /usr/local/bin/
 ```bash
 chuch-term myfile.txt
 ```
+
+---
+
+## What gets installed
+
+| What | Where |
+|------|-------|
+| Binary | `/usr/local/bin/chuch-term` (you place it there manually) |
+| Config | `~/.config/chuch-term/config.toml` (created automatically on first run) |
+
+Nothing else — no background services, no shell hooks, no system-level changes.
+
+---
+
+## Update
+
+Download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then:
+
+```bash
+tar xf chuch-term-macos-arm.tar          # Safari auto-extracts .gz; adjust for your platform
+sudo mv chuch-term /usr/local/bin/
+xattr -d com.apple.quarantine /usr/local/bin/chuch-term   # required for every new download on macOS
+chuch-term --version
+```
+
+> **macOS note:** Gatekeeper quarantines every binary downloaded from the internet.
+> The `xattr` step is always needed when updating via tar.gz.
+> To avoid it entirely, use `cargo install --git` — Rust compiles locally and Gatekeeper never triggers.
+
+---
+
+## Uninstall
+
+```bash
+chuch-term --uninstall
+```
+
+Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 
 ---
 

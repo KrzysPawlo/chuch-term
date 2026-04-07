@@ -7,6 +7,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-04-08
+
+### Added
+- `chuch-term --uninstall` — removes the binary and `~/.config/chuch-term/` in one command
+- README: new sections — "What gets installed", "Update", "Uninstall" with macOS Gatekeeper notes
+
 ## [0.5.1] - 2026-04-08
 
 ### Fixed
