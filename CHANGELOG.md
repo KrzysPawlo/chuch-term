@@ -7,6 +7,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-08
+
+### Fixed
+- Help overlay now shows `Ctrl+←/→` (word navigation) and `Ctrl+W / Del` (delete word) — were missing after v0.5.0
+- Command palette: `open config` moved to last position; added `delete word before` and `delete word after` entries
+
 ## [0.5.0] - 2026-04-08
 
 ### Added

@@ -151,18 +151,19 @@ fn render_full(area: Rect, buf: &mut Buffer) {
     // Paired rows: (left_key, left_desc, right_key, right_desc).
     // Empty string = skip that cell.
     let rows: &[(&str, &str, &str, &str)] = &[
-        ("\u{2191}\u{2193}\u{2190}\u{2192}", "Move cursor",   "Type",         "Insert character"),
-        ("Home",         "Line start",       "Backspace",     "Delete backward"),
-        ("End",          "Line end",         "Delete",        "Delete forward"),
-        ("PgUp",         "Scroll up",        "Enter",         "New line"),
-        ("PgDn",         "Scroll down",      "Ctrl+S",        "Save file"),
-        ("Shift+Arrows", "Select text",      "Ctrl+Q",        "Quit"),
-        ("Ctrl+Z",       "Undo",             "Ctrl+H",        "This help"),
-        ("Ctrl+Y",       "Redo",             "Ctrl+F",        "Find in file"),
-        ("Ctrl+G",       "Go to line",       "Ctrl+L",        "Toggle line numbers"),
-        ("Ctrl+P",       "Command palette",  "Ctrl+C/X/V",    "Copy/Cut/Paste"),
-        ("Ctrl+A",       "Select all",       "Ctrl+R",        "Find & replace"),
-        ("Alt+U / Alt+L","Upper / Lowercase","Ctrl+O",        "Go back (prev file)"),
+        ("\u{2191}\u{2193}\u{2190}\u{2192}", "Move cursor",    "Type",          "Insert character"),
+        ("Home",          "Line start",      "Backspace",      "Delete backward"),
+        ("End",           "Line end",        "Delete",         "Delete forward"),
+        ("PgUp",          "Scroll up",       "Enter",          "New line"),
+        ("PgDn",          "Scroll down",     "Ctrl+S",         "Save file"),
+        ("Shift+Arrows",  "Select text",     "Ctrl+Q",         "Quit"),
+        ("Ctrl+\u{2190}/\u{2192}", "Word left/right", "Ctrl+H", "This help"),
+        ("Ctrl+Z",        "Undo",            "Ctrl+F",         "Find in file"),
+        ("Ctrl+Y",        "Redo",            "Ctrl+L",         "Toggle line numbers"),
+        ("Ctrl+G",        "Go to line",      "Ctrl+C/X/V",     "Copy/Cut/Paste"),
+        ("Ctrl+P",        "Command palette", "Ctrl+R",         "Find & replace"),
+        ("Ctrl+A",        "Select all",      "Ctrl+O",         "Go back (prev file)"),
+        ("Alt+U / Alt+L", "Upper/Lowercase", "Ctrl+W / Del",   "Delete word \u{2190}/\u{2192}"),
     ];
 
     for (k1, d1, k2, d2) in rows {

@@ -81,12 +81,6 @@ pub static COMMANDS: &[PaletteCommand] = &[
         description: "Show keyboard shortcuts",
     },
     PaletteCommand {
-        name: "open config",
-        key: "",
-        action: AppAction::OpenConfig,
-        description: "Open config.toml in editor",
-    },
-    PaletteCommand {
         name: "find and replace",
         key: "Ctrl+R",
         action: AppAction::StartReplace,
@@ -103,6 +97,24 @@ pub static COMMANDS: &[PaletteCommand] = &[
         key: "Alt+L",
         action: AppAction::LowercaseSelection,
         description: "Convert selection to lowercase",
+    },
+    PaletteCommand {
+        name: "delete word before",
+        key: "Ctrl+W",
+        action: AppAction::DeleteWordBefore,
+        description: "Delete word before cursor",
+    },
+    PaletteCommand {
+        name: "delete word after",
+        key: "Ctrl+Delete",
+        action: AppAction::DeleteWordAfter,
+        description: "Delete word after cursor",
+    },
+    PaletteCommand {
+        name: "open config",
+        key: "",
+        action: AppAction::OpenConfig,
+        description: "Open config.toml in editor",
     },
 ];
 
