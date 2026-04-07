@@ -7,6 +7,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-04-08
+
+### Changed
+- README: installation section now includes full macOS Gatekeeper workaround (`xattr -d com.apple.quarantine`) with explanation, Safari `.tar` note, and "Homebrew — coming soon" placeholder
+- README: Update section simplified — same steps as install, explicit note that `xattr` is required on every update
+
 ## [0.5.2] - 2026-04-08
 
 ### Added

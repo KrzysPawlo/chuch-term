@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.2-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.3-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -28,7 +28,13 @@ chuch-term hits the middle ground: **everything you need for daily editing**, no
 
 ## Installation
 
-### Pre-built binary (fastest)
+### Homebrew (coming soon)
+
+```bash
+brew install chuch-term   # not yet available — planned
+```
+
+### Pre-built binary
 
 Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
 
@@ -39,10 +45,23 @@ Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/release
 | Linux x86_64 (static) | `chuch-term-linux-x86_64.tar.gz` |
 
 ```bash
-# Replace ASSET with the filename for your platform:
-curl -fsSL https://github.com/KrzysPawlo/chuch-term/releases/latest/download/ASSET.tar.gz | tar xz
+# 1. Download and extract (Safari auto-unpacks .gz — use tar xf, not tar xzf)
+tar xf chuch-term-macos-arm.tar        # adjust filename for your platform
+
+# 2. Move to PATH
 sudo mv chuch-term /usr/local/bin/
+
+# 3. macOS Gatekeeper — required for every binary downloaded from the internet
+xattr -d com.apple.quarantine /usr/local/bin/chuch-term
+
+# 4. Verify
+chuch-term --version
 ```
+
+> **Why `xattr`?** macOS quarantines binaries downloaded from the internet until they are
+> notarized by Apple or explicitly trusted. This one-time command removes the quarantine flag.
+> To skip this step entirely, use `cargo install --git` instead — Rust compiles locally
+> so Gatekeeper never applies.
 
 ### cargo install
 
@@ -57,10 +76,6 @@ Get Rust: [rustup.rs](https://rustup.rs)
 ```bash
 cargo build --release
 cp target/release/chuch-term /usr/local/bin/
-```
-
-```bash
-chuch-term myfile.txt
 ```
 
 ---
@@ -78,18 +93,16 @@ Nothing else — no background services, no shell hooks, no system-level changes
 
 ## Update
 
-Download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then:
+Download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then run the same steps as installation:
 
 ```bash
-tar xf chuch-term-macos-arm.tar          # Safari auto-extracts .gz; adjust for your platform
+tar xf chuch-term-macos-arm.tar          # adjust for your platform
 sudo mv chuch-term /usr/local/bin/
-xattr -d com.apple.quarantine /usr/local/bin/chuch-term   # required for every new download on macOS
+xattr -d com.apple.quarantine /usr/local/bin/chuch-term
 chuch-term --version
 ```
 
-> **macOS note:** Gatekeeper quarantines every binary downloaded from the internet.
-> The `xattr` step is always needed when updating via tar.gz.
-> To avoid it entirely, use `cargo install --git` — Rust compiles locally and Gatekeeper never triggers.
+The `xattr` step is required on every update — macOS re-quarantines each new download.
 
 ---
 
