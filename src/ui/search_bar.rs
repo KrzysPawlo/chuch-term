@@ -68,3 +68,24 @@ impl<'a> Widget for SearchBar<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{EditorMode, EditorState};
+
+    #[test]
+    fn search_bar_uses_theme_bg_bar() {
+        let mut state = EditorState::new_empty();
+        state.mode = EditorMode::Search;
+        state.config.theme.bg_bar = "#334455".to_string();
+
+        let area = Rect::new(0, 0, 18, 1);
+        let mut buf = Buffer::empty(area);
+        SearchBar { state: &state }.render(area, &mut buf);
+
+        for x in area.left()..area.right() {
+            assert_eq!(buf[(x, 0)].bg, Color::Rgb(51, 68, 85));
+        }
+    }
+}

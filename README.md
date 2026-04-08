@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.1-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.2-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -78,7 +78,7 @@ xattr -d com.apple.quarantine ~/.local/bin/chuch-term   # macOS only
 ### cargo install
 
 ```bash
-cargo install --git https://github.com/KrzysPawlo/chuch-term
+cargo install --git https://github.com/KrzysPawlo/chuch-term --locked
 ```
 
 Get Rust: [rustup.rs](https://rustup.rs)
@@ -86,7 +86,7 @@ Get Rust: [rustup.rs](https://rustup.rs)
 ### Build from source
 
 ```bash
-cargo build --release
+cargo build --locked --release
 cp target/release/chuch-term /usr/local/bin/
 ```
 
@@ -135,13 +135,16 @@ Homebrew install:
 brew uninstall chuch-term
 ```
 
-Manual install:
+Recommended full uninstall:
 
 ```bash
 chuch-term --uninstall
+brew uninstall chuch-term
 ```
 
-Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
+This removes the current binary, the canonical config directory `~/.config/chuch-term/`,
+and then lets Homebrew clean up its formula state. If you installed manually,
+`chuch-term --uninstall` is enough.
 
 ---
 
@@ -158,7 +161,7 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 - **Auto-indent** — Enter preserves the current line's indentation level
 - **Smart tab** — Tab inserts spaces (configurable width); literal tab mode also available
 - **Duplicate line** — Ctrl+D copies the current line below the cursor
-- **Mouse support** — click anywhere to reposition the cursor
+- **Mouse support** — left click inside the editor repositions the cursor
 - **Indent guides** — optional `│` markers at every indentation level
 - **Indentation error hints** — leading whitespace highlighted red when indentation is inconsistent (YAML, Python, Proto3)
 - **Settings overlay** — `Alt+,` (`Option+,` on macOS) opens a live settings panel; changes are saved to config.toml on close
@@ -229,7 +232,7 @@ chuch-term uses 24-bit RGB colours. On terminals without true-color support the 
 may render with incorrect colours (e.g. magenta bottom bar, washed-out text).
 
 **Recommended terminals:**
-- macOS: [iTerm2](https://iterm2.com), Ghostty, or WezTerm
+- macOS: Apple Terminal with truecolor configured, [iTerm2](https://iterm2.com), Ghostty, or WezTerm
 - Linux: kitty, alacritty, WezTerm, or any terminal with `COLORTERM=truecolor`
 
 **Verify and fix:**
@@ -243,6 +246,21 @@ chuch-term --debug-env
 
 # If COLORTERM is not set, add to your shell profile (~/.zshrc / ~/.bashrc):
 export COLORTERM=truecolor
+```
+
+`--debug-env` also shows the active config path, loaded theme values, and clarifies
+that the editor background is built-in while `theme.bg_bar` controls the bottom bars. If colours
+still look wrong after enabling truecolor, verify that the config path shown there is
+the one you expect.
+
+### macOS cleanup after 0.6.1
+
+If you tested `0.6.1` on macOS and want a truly fresh install before `0.6.2`, remove both
+the canonical config and the accidental legacy config path:
+
+```bash
+rm -rf ~/.config/chuch-term
+rm -rf ~/Library/Application\ Support/chuch-term
 ```
 
 ### macOS — Command Line Tools
@@ -296,13 +314,14 @@ accent  = "#b0c4c8"
 warning = "#ff9944"
 # Dim text colour: descriptions, secondary UI text, inactive line numbers.
 dim     = "#5a5a5a"
-# Status and hints bar background colour.
+# Bottom bar background colour: status, hints, search, replace, go-to-line, save-as.
 bg_bar  = "#121212"
 ```
 
 Open with `Ctrl+P → Open Config` or `Alt+,` (`Option+,` on macOS — Settings overlay).
 The overlay saves changes to `config.toml` on close. Config file changes (including
-`[theme]`) are hot-reloaded within 2 seconds — no restart needed.
+`[theme]`) are hot-reloaded within 2 seconds — no restart needed. The editor background
+itself stays built-in in `0.6.2`; only the bottom bars are controlled by `theme.bg_bar`.
 
 ---
 
@@ -325,9 +344,9 @@ Bug reports and pull requests are welcome.
 
 Before submitting a PR:
 ```bash
-cargo build         # must succeed
-cargo test          # must pass
-cargo clippy -- -D warnings   # must be clean
+cargo build --locked         # must succeed
+cargo test --locked          # must pass
+cargo clippy --locked -- -D warnings   # must be clean
 ```
 
 ---

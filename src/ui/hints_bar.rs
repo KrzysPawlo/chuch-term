@@ -173,3 +173,23 @@ fn render_help(area: Rect, buf: &mut Buffer, dim: Color, bg: Color) {
     let style = Style::default().fg(dim).bg(bg);
     put(buf, x, area.top(), text, style, area.right());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::EditorState;
+
+    #[test]
+    fn hints_bar_uses_theme_bg_bar() {
+        let mut state = EditorState::new_empty();
+        state.config.theme.bg_bar = "#224466".to_string();
+
+        let area = Rect::new(0, 0, 16, 1);
+        let mut buf = Buffer::empty(area);
+        HintsBar { state: &state }.render(area, &mut buf);
+
+        for x in area.left()..area.right() {
+            assert_eq!(buf[(x, 0)].bg, Color::Rgb(34, 68, 102));
+        }
+    }
+}

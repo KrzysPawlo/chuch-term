@@ -61,3 +61,24 @@ impl<'a> Widget for GotoBar<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{EditorMode, EditorState};
+
+    #[test]
+    fn goto_bar_uses_theme_bg_bar() {
+        let mut state = EditorState::new_empty();
+        state.mode = EditorMode::GoToLine;
+        state.config.theme.bg_bar = "#445566".to_string();
+
+        let area = Rect::new(0, 0, 18, 1);
+        let mut buf = Buffer::empty(area);
+        GotoBar { state: &state }.render(area, &mut buf);
+
+        for x in area.left()..area.right() {
+            assert_eq!(buf[(x, 0)].bg, Color::Rgb(68, 85, 102));
+        }
+    }
+}

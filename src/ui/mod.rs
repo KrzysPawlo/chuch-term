@@ -61,6 +61,8 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
     // Store editor area bounds for mouse click translation.
     state.editor_area_left = editor_area.left();
     state.editor_area_top = editor_area.top();
+    state.editor_area_right = editor_area.right();
+    state.editor_area_bottom = editor_area.bottom();
 
     // ── Render base layers ─────────────────────────────────────────────
     if let Some(g_area) = gutter_area {

@@ -123,7 +123,7 @@ pub enum AppAction {
     DuplicateLine,        // Ctrl+D
 
     // Settings overlay
-    OpenSettings,         // Ctrl+,
+    OpenSettings,         // Alt+, (Option+, on macOS)
     CloseSettings,        // Esc in Settings mode — closes and saves to disk
     SettingsUp,           // ↑ in Settings
     SettingsDown,         // ↓ in Settings

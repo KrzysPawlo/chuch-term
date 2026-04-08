@@ -7,6 +7,30 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-08
+
+### Fixed
+- **Single canonical config path on macOS and Linux** — `chuch-term` now uses only `~/.config/chuch-term/config.toml`; the accidental `~/Library/Application Support/chuch-term` path from `0.6.1` is no longer used at runtime
+- **Color diagnostics alignment** — `chuch-term --debug-env` now reports the active config path, whether the config exists, and the active `theme` values (`accent`, `warning`, `dim`, `bg_bar`) in addition to terminal environment data
+- **Mouse click leakage** — left-click cursor movement is now limited to the real editor area in normal editing mode; clicks on overlays, the status bar, and the bottom bars no longer move the cursor in the buffer
+- **Clipboard fail-soft behavior** — system clipboard commands are now timeout-bounded and fall back cleanly instead of potentially stalling the UI on managed macOS/Linux setups
+- **Docs/runtime contract drift** — README, install guide, architecture notes, release instructions, and user-facing comments now consistently document `Alt+,`, active `[theme]` support, and the canonical config lifecycle
+
+### Changed
+- **Uninstall guidance** — the recommended clean uninstall flow is now documented as:
+  - `chuch-term --uninstall`
+  - `brew uninstall chuch-term`
+- **Color troubleshooting** — docs now explain that truecolor support is required for the intended UI and include explicit cleanup commands for the stale `0.6.1` macOS config artifact
+- **Reproducible release commands** — install and release docs now prefer `--locked` cargo commands so validation and source installs use the committed dependency graph
+
+### Added
+- Regression tests for:
+  - config path resolution
+  - `--debug-env` reporting
+  - clipboard timeout / fallback paths
+  - mouse click bounds / overlay behavior
+  - bottom-bar widgets honoring `theme.bg_bar`
+
 ## [0.6.1] - 2026-04-08
 
 ### Fixed

@@ -20,7 +20,9 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
         }
         Event::Resize(_, _) => return Ok(()),
         Event::Mouse(mouse_event) => {
-            if let MouseEventKind::Down(MouseButton::Left) = mouse_event.kind {
+            if state.mode == EditorMode::Normal
+                && matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
+            {
                 handle_mouse_click(mouse_event.column, mouse_event.row, state);
             }
             return Ok(());
@@ -357,8 +359,9 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             if let Some((start, end)) = state.selection_range() {
                 let text = state.buffer.text_in_range(start, end);
                 let strategy = state.config.clipboard.strategy.clone();
-                crate::clipboard::copy_to_clipboard(&text, &strategy);
+                let result = crate::clipboard::copy_to_clipboard(&text, &strategy);
                 state.clipboard = text;
+                state.status_message = clipboard_copy_status(&strategy, result);
             }
         }
 
@@ -366,8 +369,9 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             if let Some((start, end)) = state.selection_range() {
                 let text = state.buffer.text_in_range(start, end);
                 let strategy = state.config.clipboard.strategy.clone();
-                crate::clipboard::copy_to_clipboard(&text, &strategy);
+                let result = crate::clipboard::copy_to_clipboard(&text, &strategy);
                 state.clipboard = text.clone();
+                state.status_message = clipboard_copy_status(&strategy, result);
 
                 let change = build_change(
                     start,
@@ -382,9 +386,17 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
 
         Paste => {
             let strategy = state.config.clipboard.strategy.clone();
-            let text = crate::clipboard::paste_from_clipboard(&strategy)
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| state.clipboard.clone());
+            let (text, status) = match crate::clipboard::paste_from_clipboard(&strategy) {
+                crate::clipboard::ClipboardPasteResult::System(text) if !text.is_empty() => {
+                    (text, None)
+                }
+                _ => {
+                    let fallback = state.clipboard.clone();
+                    let status = clipboard_paste_status(&strategy, fallback.is_empty());
+                    (fallback, status)
+                }
+            };
+            state.status_message = status;
             if !text.is_empty() {
                 let cursor_before = state.cursor;
                 let change = build_change(
@@ -942,7 +954,11 @@ fn toggle_setting(state: &mut EditorState, delta: i8) {
 /// Translate a left-click at absolute terminal coordinates into a cursor move.
 fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState) {
     // Ignore clicks outside the editor area.
-    if screen_row < state.editor_area_top || screen_col < state.editor_area_left {
+    if screen_row < state.editor_area_top
+        || screen_row >= state.editor_area_bottom
+        || screen_col < state.editor_area_left
+        || screen_col >= state.editor_area_right
+    {
         return;
     }
     let rel_row = (screen_row - state.editor_area_top) as usize;
@@ -1046,12 +1062,51 @@ fn clamp_cursor_to_buffer(state: &mut EditorState) {
     state.cursor.col = col;
 }
 
+fn clipboard_copy_status(
+    strategy: &str,
+    result: crate::clipboard::ClipboardCopyResult,
+) -> Option<String> {
+    match (strategy, result) {
+        ("auto", crate::clipboard::ClipboardCopyResult::Osc52) => {
+            Some("System clipboard unavailable; used OSC-52 copy fallback.".to_string())
+        }
+        ("auto", crate::clipboard::ClipboardCopyResult::Unavailable) => {
+            Some("System clipboard unavailable; kept copy in internal clipboard.".to_string())
+        }
+        ("osc52", crate::clipboard::ClipboardCopyResult::Unavailable) => {
+            Some("OSC-52 copy failed; kept copy in internal clipboard.".to_string())
+        }
+        _ => None,
+    }
+}
+
+fn clipboard_paste_status(strategy: &str, internal_empty: bool) -> Option<String> {
+    if strategy == "internal" {
+        return None;
+    }
+
+    if strategy == "osc52" {
+        return if internal_empty {
+            Some("OSC-52 mode does not support paste; internal clipboard is empty.".to_string())
+        } else {
+            Some("OSC-52 mode does not support paste; used internal clipboard.".to_string())
+        };
+    }
+
+    if internal_empty {
+        Some("System clipboard unavailable; nothing to paste.".to_string())
+    } else {
+        Some("System clipboard unavailable; used internal clipboard.".to_string())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::EditorConfig;
     use crate::editor::TextBuffer;
+    use crossterm::event::{KeyModifiers, MouseEvent};
 
     fn state_with_lines(lines: &[&str]) -> EditorState {
         let mut state = EditorState::new_empty();
@@ -1061,6 +1116,10 @@ mod tests {
             file_path: None,
         };
         state.config = EditorConfig::default();
+        state.editor_area_left = 2;
+        state.editor_area_top = 1;
+        state.editor_area_right = 22;
+        state.editor_area_bottom = 4;
         state
     }
 
@@ -1419,5 +1478,85 @@ mod tests {
     fn has_indent_error_rust_not_checked() {
         use crate::syntax::{has_indent_error, Language};
         assert!(!has_indent_error("   fn foo()", 4, Language::Rust)); // Rust not checked
+    }
+
+    #[test]
+    fn mouse_click_inside_editor_moves_cursor() {
+        let mut state = state_with_lines(&["hello"]);
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse event");
+
+        assert_eq!(state.cursor, Cursor { row: 0, col: 2 });
+    }
+
+    #[test]
+    fn mouse_click_outside_editor_does_not_move_cursor() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 4 };
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 4,
+                row: 4,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse event");
+
+        assert_eq!(state.cursor, Cursor { row: 0, col: 4 });
+    }
+
+    #[test]
+    fn mouse_click_in_overlay_mode_does_not_move_cursor() {
+        let mut state = state_with_lines(&["hello"]);
+        state.mode = EditorMode::Help;
+        state.cursor = Cursor { row: 0, col: 1 };
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 6,
+                row: 2,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse event");
+
+        assert_eq!(state.cursor, Cursor { row: 0, col: 1 });
+    }
+
+    #[test]
+    fn clipboard_copy_status_reports_osc52_fallback_for_auto() {
+        let status = clipboard_copy_status(
+            "auto",
+            crate::clipboard::ClipboardCopyResult::Osc52,
+        );
+
+        assert_eq!(
+            status.as_deref(),
+            Some("System clipboard unavailable; used OSC-52 copy fallback.")
+        );
+    }
+
+    #[test]
+    fn clipboard_paste_status_reports_internal_fallback_for_auto() {
+        let status = clipboard_paste_status("auto", false);
+
+        assert_eq!(
+            status.as_deref(),
+            Some("System clipboard unavailable; used internal clipboard.")
+        );
     }
 }

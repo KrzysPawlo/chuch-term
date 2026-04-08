@@ -190,6 +190,8 @@ fn write_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::EditorState;
+    use ratatui::layout::Rect;
 
     #[test]
     fn truncation_is_utf8_safe() {
@@ -202,5 +204,20 @@ mod tests {
     fn truncation_handles_tiny_width() {
         assert_eq!(truncate_to_width("abc", 0), "");
         assert_eq!(truncate_to_width("abc", 1), "…");
+    }
+
+    #[test]
+    fn status_bar_uses_theme_bg_bar() {
+        let mut state = EditorState::new_empty();
+        state.status_message = None;
+        state.config.theme.bg_bar = "#112233".to_string();
+
+        let area = Rect::new(0, 0, 12, 1);
+        let mut buf = Buffer::empty(area);
+        StatusBar { state: &state }.render(area, &mut buf);
+
+        for x in area.left()..area.right() {
+            assert_eq!(buf[(x, 0)].bg, Color::Rgb(17, 34, 51));
+        }
     }
 }

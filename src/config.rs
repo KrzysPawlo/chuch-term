@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+pub const DISPLAY_CONFIG_PATH: &str = "~/.config/chuch-term/config.toml";
 
 pub const DEFAULT_CONFIG_CONTENT: &str = r##"# chuch-term configuration
 # Location: ~/.config/chuch-term/config.toml
@@ -29,7 +32,7 @@ accent  = "#b0c4c8"
 warning = "#ff9944"
 # Dim text colour: descriptions, secondary UI text, inactive line numbers.
 dim     = "#5a5a5a"
-# Status and hints bar background colour.
+# Bottom bar background colour: status, hints, search, replace, go-to-line, save-as.
 bg_bar  = "#121212"
 "##;
 
@@ -89,7 +92,7 @@ pub struct ThemeSection {
     /// Dim text colour: descriptions and secondary UI elements.
     #[serde(default = "default_dim")]
     pub dim: String,
-    /// Status and hints bar background colour.
+    /// Bottom bar background colour: status, hints, search, replace, go-to-line, save-as.
     #[serde(default = "default_bg_bar")]
     pub bg_bar: String,
 }
@@ -162,19 +165,22 @@ pub fn config_path() -> Option<PathBuf> {
     config_dir().map(|d| d.join("chuch-term").join("config.toml"))
 }
 
-/// Returns the OS config base directory without pulling in any external crate.
-/// Matches the behaviour of `dirs::config_dir()`:
-///   macOS  → ~/Library/Application Support
-///   Linux  → $XDG_CONFIG_HOME or ~/.config
-fn config_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    return std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join("Library").join("Application Support"));
-
-    #[cfg(not(target_os = "macos"))]
-    return std::env::var_os("XDG_CONFIG_HOME")
+fn config_base_dir_from_env(
+    xdg_config_home: Option<OsString>,
+    home: Option<OsString>,
+) -> Option<PathBuf> {
+    xdg_config_home
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
+        .or_else(|| home.map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// Returns the canonical config base directory without pulling in any external crate.
+/// All supported platforms use `$XDG_CONFIG_HOME` or `~/.config`.
+fn config_dir() -> Option<PathBuf> {
+    config_base_dir_from_env(
+        std::env::var_os("XDG_CONFIG_HOME"),
+        std::env::var_os("HOME"),
+    )
 }
 
 pub fn load_config() -> (EditorConfig, Option<String>) {
@@ -185,13 +191,41 @@ pub fn load_config() -> (EditorConfig, Option<String>) {
     load_config_from_path(&path)
 }
 
+pub fn load_existing_config() -> (Option<EditorConfig>, Option<String>) {
+    let path = match config_path() {
+        Some(path) => path,
+        None => return (None, None),
+    };
+
+    if !path.exists() {
+        return (None, None);
+    }
+
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match toml::from_str::<EditorConfig>(&content) {
+            Ok(cfg) => {
+                let (cfg, warn) = validate_config(cfg);
+                (Some(cfg), warn)
+            }
+            Err(err) => (
+                None,
+                Some(format!("Config parse error: {err}")),
+            ),
+        },
+        Err(err) => (
+            None,
+            Some(format!("Config read error: {err}")),
+        ),
+    }
+}
+
 pub fn load_config_from_path(path: &Path) -> (EditorConfig, Option<String>) {
     if !path.exists() {
         match create_default_config(path) {
             Ok(true) => {
                 return (
                     EditorConfig::default(),
-                    Some("Config created: ~/.config/chuch-term/config.toml".into()),
+                    Some(format!("Config created: {DISPLAY_CONFIG_PATH}")),
                 );
             }
             Ok(false) => {}
@@ -274,7 +308,13 @@ fn create_default_config(path: &Path) -> std::io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn temp_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -290,17 +330,29 @@ mod tests {
         let path = root.join("config.toml");
 
         let (config, message) = load_config_from_path(&path);
+        let expected = format!("Config created: {DISPLAY_CONFIG_PATH}");
 
         assert!(config.editor.line_numbers);
-        assert_eq!(
-            message.as_deref(),
-            Some("Config created: ~/.config/chuch-term/config.toml")
-        );
+        assert_eq!(message.as_deref(), Some(expected.as_str()));
 
         let content = std::fs::read_to_string(&path).expect("config should exist");
         assert!(content.contains("tab_width"));    // valid field in DEFAULT_CONFIG_CONTENT
         assert!(content.contains("[theme]"));      // theme section is now present
         assert!(content.contains("accent"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn create_message_uses_only_canonical_config_path() {
+        let root = temp_path("create-message");
+        let path = root.join("config.toml");
+
+        let (_config, message) = load_config_from_path(&path);
+        let message = message.expect("config create message");
+
+        assert!(message.contains(DISPLAY_CONFIG_PATH));
+        assert!(!message.contains("Application Support"));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -352,6 +404,70 @@ strategy = "internal"
         assert_eq!(config.clipboard.strategy, "internal");
         // Theme values from the legacy config are now loaded correctly.
         assert_eq!(config.theme.accent, "#ffffff");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn config_base_dir_prefers_xdg() {
+        let dir = config_base_dir_from_env(
+            Some(OsString::from("/tmp/xdg")),
+            Some(OsString::from("/tmp/home")),
+        )
+        .expect("xdg dir");
+
+        assert_eq!(dir, PathBuf::from("/tmp/xdg"));
+    }
+
+    #[test]
+    fn config_base_dir_falls_back_to_dot_config() {
+        let dir = config_base_dir_from_env(
+            None,
+            Some(OsString::from("/tmp/home")),
+        )
+        .expect("home dir");
+
+        assert_eq!(dir, PathBuf::from("/tmp/home/.config"));
+    }
+
+    #[test]
+    fn invalid_theme_hex_falls_back_to_defaults() {
+        let mut theme = ThemeSection::default();
+        theme.bg_bar = "not-a-color".to_string();
+        theme.accent = "#12".to_string();
+
+        assert_eq!(theme.bg_bar_rgb(), (18, 18, 18));
+        assert_eq!(theme.accent_rgb(), (176, 196, 200));
+    }
+
+    #[test]
+    fn load_existing_config_does_not_create_missing_file() {
+        let _guard = env_lock().lock().expect("env test mutex");
+        let root = temp_path("inspect");
+        let previous_home = std::env::var_os("HOME");
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        std::env::set_var("HOME", &root);
+        std::env::remove_var("XDG_CONFIG_HOME");
+
+        let path = config_path().expect("config path");
+        assert!(!path.exists());
+
+        let (config, message) = load_existing_config();
+        assert!(config.is_none());
+        assert!(message.is_none());
+        assert!(!path.exists());
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(xdg) = previous_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", xdg);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
 
         let _ = std::fs::remove_dir_all(root);
     }

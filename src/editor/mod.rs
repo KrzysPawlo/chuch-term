@@ -90,6 +90,10 @@ pub struct EditorState {
     pub editor_area_left: u16,
     /// Top edge of the editor area in terminal rows (updated every frame).
     pub editor_area_top: u16,
+    /// Right edge of the editor area in terminal columns (updated every frame).
+    pub editor_area_right: u16,
+    /// Bottom edge of the editor area in terminal rows (updated every frame).
+    pub editor_area_bottom: u16,
 
     // ── Command palette ──────────────────────────────────────────────────
     pub palette_query: String,
@@ -142,6 +146,8 @@ impl EditorState {
             settings_cursor: 0,
             editor_area_left: 0,
             editor_area_top: 0,
+            editor_area_right: 0,
+            editor_area_bottom: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
@@ -181,6 +187,8 @@ impl EditorState {
             settings_cursor: 0,
             editor_area_left: 0,
             editor_area_top: 0,
+            editor_area_right: 0,
+            editor_area_bottom: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
@@ -218,6 +226,8 @@ impl EditorState {
             settings_cursor: 0,
             editor_area_left: 0,
             editor_area_top: 0,
+            editor_area_right: 0,
+            editor_area_bottom: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
