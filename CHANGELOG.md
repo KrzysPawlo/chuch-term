@@ -7,6 +7,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-04-08
+
+### Changed
+- `ratatui` upgraded `0.29` → `0.30` — removes `paste` (unmaintained proc-macro) from the dependency tree entirely
+- `dirs` dependency removed — replaced with 8 lines of stdlib code using `$HOME` / `$XDG_CONFIG_HOME`; eliminates `option-ext` (MPL-2.0) and `dirs-sys` from the tree
+- `deny.toml`: removed advisory suppression for `RUSTSEC-2024-0436` (no longer needed) and `MPL-2.0` from license allowlist (no longer present)
+
+## [0.5.5] - 2026-04-08
+
+### Fixed
+- `deny.toml`: added `MPL-2.0` to license allowlist (`option-ext` via `dirs`)
+- `deny.toml`: suppressed `RUSTSEC-2024-0436` (`paste` unmaintained, transitive via `ratatui`, no safe upgrade)
+
 ## [0.5.4] - 2026-04-08
 
 ### Added

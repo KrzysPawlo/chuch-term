@@ -55,7 +55,22 @@ pub struct EditorConfig {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("chuch-term").join("config.toml"))
+    config_dir().map(|d| d.join("chuch-term").join("config.toml"))
+}
+
+/// Returns the OS config base directory without pulling in any external crate.
+/// Matches the behaviour of `dirs::config_dir()`:
+///   macOS  → ~/Library/Application Support
+///   Linux  → $XDG_CONFIG_HOME or ~/.config
+fn config_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    return std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join("Library").join("Application Support"));
+
+    #[cfg(not(target_os = "macos"))]
+    return std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
 }
 
 pub fn load_config() -> (EditorConfig, Option<String>) {

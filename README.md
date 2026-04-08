@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.4-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.6-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
