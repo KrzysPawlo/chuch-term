@@ -28,29 +28,26 @@ chuch-term hits the middle ground: **everything you need for daily editing**, no
 
 ## Installation
 
-### Homebrew (coming soon)
+### Homebrew (recommended)
 
 ```bash
-brew install chuch-term   # not yet available — planned
+brew tap KrzysPawlo/chuch
+brew install chuch-term
 ```
 
 ### Pre-built binary
 
 Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
 
-| Platform | File |
-|----------|------|
-| macOS Apple Silicon | `chuch-term-macos-arm.tar.gz` |
-| macOS Intel | `chuch-term-macos-intel.tar.gz` |
-| Linux x86_64 (static) | `chuch-term-linux-x86_64.tar.gz` |
+- macOS Apple Silicon: `chuch-term-macos-arm.tar.gz`
+- macOS Intel: `chuch-term-macos-intel.tar.gz`
+- Linux x86_64 (static): `chuch-term-linux-x86_64.tar.gz`
 
 **1. Download both files** from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
 
-| Platform | Files to download |
-|----------|-------------------|
-| macOS Apple Silicon | `chuch-term-macos-arm.tar.gz` + `chuch-term-macos-arm.sha256` |
-| macOS Intel | `chuch-term-macos-intel.tar.gz` + `chuch-term-macos-intel.sha256` |
-| Linux x86_64 | `chuch-term-linux-x86_64.tar.gz` + `chuch-term-linux-x86_64.sha256` |
+- macOS Apple Silicon: `chuch-term-macos-arm.tar.gz` + `chuch-term-macos-arm.sha256`
+- macOS Intel: `chuch-term-macos-intel.tar.gz` + `chuch-term-macos-intel.sha256`
+- Linux x86_64: `chuch-term-linux-x86_64.tar.gz` + `chuch-term-linux-x86_64.sha256`
 
 **2. Open Terminal and run** (example for macOS Apple Silicon):
 
@@ -97,10 +94,11 @@ cp target/release/chuch-term /usr/local/bin/
 
 ## What gets installed
 
-| What | Where |
-|------|-------|
-| Binary | `/usr/local/bin/chuch-term` (you place it there manually) |
-| Config | `~/.config/chuch-term/config.toml` (created automatically on first run) |
+- Binary:
+  - Homebrew prefix bin when installed with Homebrew
+  - `/usr/local/bin/chuch-term` or `~/.local/bin/chuch-term` for manual installs
+- Config:
+  - `~/.config/chuch-term/config.toml` created automatically on first run
 
 Nothing else — no background services, no shell hooks, no system-level changes.
 
@@ -108,7 +106,14 @@ Nothing else — no background services, no shell hooks, no system-level changes
 
 ## Update
 
-Download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then run the same steps as installation:
+If you installed with Homebrew:
+
+```bash
+brew update
+brew upgrade chuch-term
+```
+
+If you installed from release assets, download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then run the same steps as installation:
 
 ```bash
 tar xf chuch-term-macos-arm.tar                        # adjust for your platform
@@ -123,6 +128,14 @@ The `xattr` step is required on every update — macOS re-quarantines each new d
 ---
 
 ## Uninstall
+
+Homebrew install:
+
+```bash
+brew uninstall chuch-term
+```
+
+Manual install:
 
 ```bash
 chuch-term --uninstall
@@ -151,55 +164,50 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 ## Keybindings
 
 ### Navigation
-| Key | Action |
-|-----|--------|
-| `↑ ↓ ← →` | Move cursor |
-| `Home` / `End` | Start / end of line |
-| `PgUp` / `PgDn` | Scroll page |
-| `Ctrl+←` / `Ctrl+→` | Jump word left / right |
-| `Ctrl+G` | Go to line number |
+
+- `↑ ↓ ← →` move cursor
+- `Home` / `End` jump to start or end of line
+- `PgUp` / `PgDn` scroll by page
+- `Ctrl+←` / `Ctrl+→` jump by word
+- `Ctrl+G` go to line
 
 ### Editing
-| Key | Action |
-|-----|--------|
-| Type | Insert text |
-| `Backspace` / `Delete` | Delete character |
-| `Enter` | New line |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `Ctrl+W` | Delete word before cursor |
-| `Ctrl+Delete` | Delete word after cursor |
-| `Alt+U` | UPPERCASE selection |
-| `Alt+L` | lowercase selection |
+
+- type to insert text
+- `Backspace` / `Delete` delete character
+- `Enter` insert new line
+- `Ctrl+Z` undo
+- `Ctrl+Y` redo
+- `Ctrl+W` delete word before cursor
+- `Ctrl+Delete` delete word after cursor
+- `Alt+U` uppercase selection
+- `Alt+L` lowercase selection
 
 ### Find & Replace
-| Key | Action |
-|-----|--------|
-| `Ctrl+F` | Start search |
-| `Ctrl+N` / `Ctrl+P` | Next / previous match |
-| `Ctrl+I` | Toggle case sensitivity |
-| `Enter` (search) | Select current match |
-| `Ctrl+R` | Find and replace |
-| `Enter` (replace) | Replace current match |
-| `Ctrl+A` (replace) | Replace all matches |
+
+- `Ctrl+F` start search
+- `Ctrl+N` / `Ctrl+P` next or previous match
+- `Ctrl+I` toggle case sensitivity
+- `Enter` in search selects current match
+- `Ctrl+R` open find and replace
+- `Enter` in replace confirms current replacement
+- `Ctrl+A` in replace mode replaces all matches
 
 ### Selection & Clipboard
-| Key | Action |
-|-----|--------|
-| `Shift+↑↓←→` | Extend selection |
-| `Ctrl+Shift+←/→` | Extend selection by word |
-| `Ctrl+A` | Select all |
-| `Ctrl+C / X / V` | Copy / Cut / Paste |
+
+- `Shift+↑↓←→` extend selection
+- `Ctrl+Shift+←/→` extend selection by word
+- `Ctrl+A` select all
+- `Ctrl+C / X / V` copy, cut, paste
 
 ### File & Navigation
-| Key | Action |
-|-----|--------|
-| `Ctrl+S` | Save |
-| `Ctrl+Q` | Quit (prompts if unsaved) |
-| `Ctrl+O` | Go back to previous file |
-| `Ctrl+L` | Toggle line numbers |
-| `Ctrl+P` | Command palette |
-| `Ctrl+H` | Help overlay |
+
+- `Ctrl+S` save
+- `Ctrl+Q` quit, with prompt if unsaved
+- `Ctrl+O` go back to previous file
+- `Ctrl+L` toggle line numbers
+- `Ctrl+P` command palette
+- `Ctrl+H` help overlay
 
 ---
 
@@ -227,12 +235,10 @@ Legacy keys such as `editor.tab_width` and `[theme]` are tolerated but ignored.
 
 ## Platform Support
 
-| Platform | Status |
-|----------|--------|
-| macOS (Apple Silicon / Intel) | Supported |
-| Linux x86\_64 | Supported |
-| Linux aarch64 (Raspberry Pi, ARM servers) | Supported |
-| Any server with a shell | Supported (copy binary) |
+- macOS (Apple Silicon / Intel): supported
+- Linux x86_64: supported
+- Linux aarch64 (Raspberry Pi, ARM servers): supported
+- Any server with a shell: supported via copied binary
 
 ---
 
