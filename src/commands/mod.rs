@@ -111,6 +111,12 @@ pub static COMMANDS: &[PaletteCommand] = &[
         description: "Delete word after cursor",
     },
     PaletteCommand {
+        name: "open settings",
+        key: "Ctrl+,",
+        action: AppAction::OpenSettings,
+        description: "Open interactive settings panel",
+    },
+    PaletteCommand {
         name: "open config",
         key: "",
         action: AppAction::OpenConfig,

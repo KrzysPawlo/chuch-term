@@ -7,6 +7,7 @@ pub mod line_numbers;
 pub mod replace_bar;
 pub mod saveas_bar;
 pub mod search_bar;
+pub mod settings_overlay;
 pub mod status_bar;
 
 use ratatui::{
@@ -23,10 +24,12 @@ use line_numbers::{gutter_width, LineNumbersGutter};
 use replace_bar::ReplaceBar;
 use saveas_bar::SaveAsBar;
 use search_bar::SearchBar;
+use settings_overlay::SettingsOverlay;
 use status_bar::StatusBar;
 
 /// Draw the full UI into the ratatui frame.
-pub fn draw(frame: &mut Frame, state: &EditorState) {
+/// Takes `&mut EditorState` so it can record the editor area bounds for mouse hit-testing.
+pub fn draw(frame: &mut Frame, state: &mut EditorState) {
     let area = frame.area();
 
     // Split: editor area + status bar (1 row) + hints bar (1 row).
@@ -55,6 +58,10 @@ pub fn draw(frame: &mut Frame, state: &EditorState) {
         (None, editor_chunk)
     };
 
+    // Store editor area bounds for mouse click translation.
+    state.editor_area_left = editor_area.left();
+    state.editor_area_top = editor_area.top();
+
     // ── Render base layers ─────────────────────────────────────────────
     if let Some(g_area) = gutter_area {
         frame.render_widget(LineNumbersGutter { state }, g_area);
@@ -76,8 +83,8 @@ pub fn draw(frame: &mut Frame, state: &EditorState) {
         EditorMode::SaveAs => {
             frame.render_widget(SaveAsBar { state }, hints_area);
         }
-        EditorMode::CommandPalette => {
-            // No hints bar content — palette covers everything
+        EditorMode::CommandPalette | EditorMode::Settings => {
+            // Overlays cover the hints bar — nothing rendered here.
         }
         _ => {
             frame.render_widget(HintsBar { state }, hints_area);
@@ -95,14 +102,14 @@ pub fn draw(frame: &mut Frame, state: &EditorState) {
         return;
     }
 
+    if state.mode == EditorMode::Settings {
+        frame.render_widget(SettingsOverlay { state }, area);
+        return;
+    }
+
     // ── Terminal cursor position ───────────────────────────────────────
     let viewport_height = editor_area.height as usize;
     let cursor_screen_row = state.cursor.row.saturating_sub(state.viewport.offset_row);
-
-    // Don't show cursor in palette or other overlay modes
-    if matches!(state.mode, EditorMode::CommandPalette | EditorMode::Help) {
-        return;
-    }
 
     if cursor_screen_row < viewport_height {
         let display_col = EditorView::cursor_display_col(state);

@@ -7,6 +7,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-08
+
+### Added
+- **Auto-indent** — `Enter` preserves leading whitespace of the current line; controlled by `editor.auto_indent` (default `true`)
+- **Expand tabs** — `Tab` inserts spaces instead of a literal tab; `editor.expand_tabs` (default `true`), width via `editor.tab_width` (default `4`)
+- **Duplicate line** — `Ctrl+D` copies the current line below and moves the cursor there; fully undoable
+- **Styled cursor position** — status bar now shows `Ln X  Col Y` with accent-coloured numbers instead of plain `row:col`
+- **Mouse support** — left click positions the cursor; clears selection; requires terminal to support mouse events
+- **Indent guides** — optional `│` markers at every `tab_width` column in leading whitespace; `editor.indent_guides` (default `false`)
+- **Indentation error hints** — red background on leading whitespace of lines with inconsistent indentation in YAML, Python, and Proto3 files; `editor.indent_errors` (default `false`); colour configurable via `editor.indent_error_bg = [r, g, b]`
+- **Settings overlay** — `Ctrl+,` opens an interactive settings panel; `↑/↓` to navigate, `Space/Enter` to toggle, `←/→` to adjust numeric/enum values; `Esc` closes and saves all changes to `config.toml`
+- `open settings` command added to the command palette
+
 ## [0.5.9] - 2026-04-08
 
 ### Added

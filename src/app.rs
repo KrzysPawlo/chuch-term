@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use crossterm::{
     event,
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -32,7 +33,7 @@ pub fn run(file_path: Option<PathBuf>) -> Result<()> {
     install_panic_hook();
     enable_raw_mode()?;
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
@@ -42,7 +43,7 @@ pub fn run(file_path: Option<PathBuf>) -> Result<()> {
 
     // ── Tear down terminal (always, even on error) ─────────────────────
     let _ = disable_raw_mode();
-    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture);
     let _ = terminal.show_cursor();
 
     result
@@ -63,7 +64,7 @@ fn event_loop(
             .viewport
             .scroll_to_cursor(&state.cursor, viewport_height);
 
-        // Draw the frame.
+        // Draw the frame (draw takes &mut state to record editor area bounds).
         terminal.draw(|frame| draw(frame, state))?;
 
         // Wait for next event (with a timeout so we can do periodic checks).
@@ -98,7 +99,7 @@ fn install_panic_hook() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
         original_hook(panic_info);
     }));
 }

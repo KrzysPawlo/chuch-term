@@ -10,6 +10,12 @@ pub const DEFAULT_CONFIG_CONTENT: &str = r##"# chuch-term configuration
 line_numbers = true
 relative_numbers = false
 syntax_highlight = true
+auto_indent = true
+expand_tabs = true
+tab_width = 4
+indent_guides = false
+indent_errors = false
+# indent_error_bg = [70, 20, 20]  # RGB colour of the error background (default)
 
 [clipboard]
 # "auto" = detect system clipboard, "internal" = never use system clipboard, "osc52" = force OSC-52
@@ -21,6 +27,22 @@ pub struct EditorSection {
     pub line_numbers: bool,
     pub relative_numbers: bool,
     pub syntax_highlight: bool,
+
+    // Indentation behaviour
+    #[serde(default = "default_true")]
+    pub auto_indent: bool,
+    #[serde(default = "default_true")]
+    pub expand_tabs: bool,
+    #[serde(default = "default_tab_width")]
+    pub tab_width: u8,
+
+    // Visual guides
+    #[serde(default)]
+    pub indent_guides: bool,
+    #[serde(default)]
+    pub indent_errors: bool,
+    #[serde(default = "default_indent_error_bg")]
+    pub indent_error_bg: [u8; 3],
 }
 
 impl Default for EditorSection {
@@ -29,9 +51,19 @@ impl Default for EditorSection {
             line_numbers: true,
             relative_numbers: false,
             syntax_highlight: true,
+            auto_indent: true,
+            expand_tabs: true,
+            tab_width: 4,
+            indent_guides: false,
+            indent_errors: false,
+            indent_error_bg: [70, 20, 20],
         }
     }
 }
+
+fn default_true() -> bool { true }
+fn default_tab_width() -> u8 { 4 }
+fn default_indent_error_bg() -> [u8; 3] { [70, 20, 20] }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardSection {
@@ -122,6 +154,23 @@ pub fn config_mtime() -> Option<SystemTime> {
     config_path()?.metadata().ok()?.modified().ok()
 }
 
+/// Persist the current in-memory config back to disk (used by the Settings overlay).
+/// Overwrites the file with clean TOML — comments from the original file are not preserved.
+pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+    let path = config_path()
+        .context("Cannot determine config path")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Cannot create config dir: {}", parent.display()))?;
+    }
+    let content = toml::to_string_pretty(config)
+        .context("Cannot serialise config")?;
+    std::fs::write(&path, content)
+        .with_context(|| format!("Cannot write config: {}", path.display()))?;
+    Ok(())
+}
+
 fn validate_config(mut cfg: EditorConfig) -> (EditorConfig, Option<String>) {
     const VALID_STRATEGIES: &[&str] = &["auto", "internal", "osc52"];
     if !VALID_STRATEGIES.contains(&cfg.clipboard.strategy.as_str()) {
@@ -133,6 +182,8 @@ fn validate_config(mut cfg: EditorConfig) -> (EditorConfig, Option<String>) {
             )),
         );
     }
+    // Clamp tab_width to a sensible range.
+    cfg.editor.tab_width = cfg.editor.tab_width.clamp(1, 8);
     (cfg, None)
 }
 
@@ -175,7 +226,7 @@ mod tests {
         );
 
         let content = std::fs::read_to_string(&path).expect("config should exist");
-        assert!(!content.contains("tab_width"));
+        assert!(content.contains("tab_width"));    // now a valid field in DEFAULT_CONFIG_CONTENT
         assert!(!content.contains("[theme]"));
 
         let _ = std::fs::remove_dir_all(root);

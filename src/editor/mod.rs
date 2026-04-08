@@ -31,6 +31,8 @@ pub enum EditorMode {
     Replace,
     /// Save-as prompt — user types a filename to save the buffer to.
     SaveAs,
+    /// Interactive settings panel.
+    Settings,
 }
 
 /// Line number display mode.
@@ -79,6 +81,16 @@ pub struct EditorState {
     // ── Save-as ──────────────────────────────────────────────────────────
     pub saveas_input: String,
 
+    // ── Settings overlay ─────────────────────────────────────────────────
+    /// Index of the currently selected row in the Settings overlay.
+    pub settings_cursor: usize,
+
+    // ── Mouse / layout ───────────────────────────────────────────────────
+    /// Left edge of the editor area in terminal columns (updated every frame).
+    pub editor_area_left: u16,
+    /// Top edge of the editor area in terminal rows (updated every frame).
+    pub editor_area_top: u16,
+
     // ── Command palette ──────────────────────────────────────────────────
     pub palette_query: String,
     pub palette_matches: Vec<usize>,
@@ -93,7 +105,7 @@ pub struct EditorState {
 }
 
 impl EditorState {
-    fn line_number_mode_for(config: &crate::config::EditorConfig) -> LineNumberMode {
+    pub(crate) fn line_number_mode_for(config: &crate::config::EditorConfig) -> LineNumberMode {
         if !config.editor.line_numbers {
             LineNumberMode::Off
         } else if config.editor.relative_numbers {
@@ -127,6 +139,9 @@ impl EditorState {
             line_number_mode,
             goto_input: String::new(),
             saveas_input: String::new(),
+            settings_cursor: 0,
+            editor_area_left: 0,
+            editor_area_top: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
@@ -163,6 +178,9 @@ impl EditorState {
             line_number_mode,
             goto_input: String::new(),
             saveas_input: String::new(),
+            settings_cursor: 0,
+            editor_area_left: 0,
+            editor_area_top: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
@@ -197,6 +215,9 @@ impl EditorState {
             line_number_mode,
             goto_input: String::new(),
             saveas_input: String::new(),
+            settings_cursor: 0,
+            editor_area_left: 0,
+            editor_area_top: 0,
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,

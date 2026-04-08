@@ -118,6 +118,17 @@ pub enum AppAction {
     SaveAsBackspace,      // Backspace in SaveAs mode
     SaveAsSubmit,         // Enter in SaveAs mode — sets path and saves
     CancelSaveAs,         // Esc in SaveAs mode
+
+    // Duplicate line
+    DuplicateLine,        // Ctrl+D
+
+    // Settings overlay
+    OpenSettings,         // Ctrl+,
+    CloseSettings,        // Esc in Settings mode — closes and saves to disk
+    SettingsUp,           // ↑ in Settings
+    SettingsDown,         // ↓ in Settings
+    SettingsToggle,       // Enter / Space — toggle bool at cursor
+    SettingsAdjust(i8),   // ← / → — adjust numeric or cycle enum
 }
 
 /// Map a raw key event + current editor mode to a semantic AppAction.
@@ -215,6 +226,18 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
             }
         }
 
+        // ── Settings overlay ──────────────────────────────────────────
+        EditorMode::Settings => match event.code {
+            KeyCode::Esc => AppAction::CloseSettings,
+            KeyCode::Up => AppAction::SettingsUp,
+            KeyCode::Down => AppAction::SettingsDown,
+            KeyCode::Enter => AppAction::SettingsToggle,
+            KeyCode::Char(' ') => AppAction::SettingsToggle,
+            KeyCode::Left => AppAction::SettingsAdjust(-1),
+            KeyCode::Right => AppAction::SettingsAdjust(1),
+            _ => AppAction::Noop,
+        },
+
         // ── Save-as prompt ────────────────────────────────────────────
         EditorMode::SaveAs => match event.code {
             KeyCode::Esc => AppAction::CancelSaveAs,
@@ -245,6 +268,8 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                     KeyCode::Char('n') => AppAction::SearchNext,
                     KeyCode::Char('o') => AppAction::GoBackBuffer,
                     KeyCode::Char('r') => AppAction::StartReplace,
+                    KeyCode::Char('d') => AppAction::DuplicateLine,
+                    KeyCode::Char(',') => AppAction::OpenSettings,
                     KeyCode::Char('w') => AppAction::DeleteWordBefore,
                     KeyCode::Left if shift => AppAction::ShiftWordLeft,
                     KeyCode::Right if shift => AppAction::ShiftWordRight,

@@ -3,7 +3,7 @@ pub mod keybindings;
 pub use keybindings::{map_key, AppAction};
 
 use anyhow::Result;
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 
 use crate::editor::buffer::{next_char_boundary, prev_char_boundary};
 use crate::editor::history::TextChange;
@@ -19,6 +19,12 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
             map_key(key_event, state.mode)
         }
         Event::Resize(_, _) => return Ok(()),
+        Event::Mouse(mouse_event) => {
+            if let MouseEventKind::Down(MouseButton::Left) = mouse_event.kind {
+                handle_mouse_click(mouse_event.column, mouse_event.row, state);
+            }
+            return Ok(());
+        }
         _ => return Ok(()),
     };
 
@@ -134,11 +140,16 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         InsertChar(ch) => {
+            let text = if ch == '\t' && state.config.editor.expand_tabs {
+                " ".repeat(state.config.editor.tab_width as usize)
+            } else {
+                ch.to_string()
+            };
             let cursor_before = state.cursor;
             let change = build_change(
                 (cursor_before.row, cursor_before.col),
                 String::new(),
-                ch.to_string(),
+                text,
                 cursor_before,
             );
             apply_and_record_change(state, change, true);
@@ -191,10 +202,20 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
 
         InsertNewline => {
             let cursor_before = state.cursor;
+            let indent = if state.config.editor.auto_indent {
+                let line = state.buffer.line(cursor_before.row);
+                let up_to_cursor = &line[..cursor_before.col.min(line.len())];
+                up_to_cursor
+                    .chars()
+                    .take_while(|c| *c == ' ' || *c == '\t')
+                    .collect::<String>()
+            } else {
+                String::new()
+            };
             let change = build_change(
                 (cursor_before.row, cursor_before.col),
                 String::new(),
-                "\n".to_string(),
+                format!("\n{indent}"),
                 cursor_before,
             );
             apply_and_record_change(state, change, false);
@@ -666,6 +687,54 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
                 apply_and_record_change(state, change, false);
             }
         }
+
+        // ── Duplicate line ────────────────────────────────────────────
+        DuplicateLine => {
+            let row = state.cursor.row;
+            let orig_col = state.cursor.col;
+            let line = state.buffer.line(row).to_string();
+            let insert_col = line.len();
+            let change = build_change(
+                (row, insert_col),
+                String::new(),
+                format!("\n{line}"),
+                state.cursor,
+            );
+            apply_and_record_change(state, change, false);
+            // Move to the new duplicate row, same column (clamped).
+            state.cursor.row = row + 1;
+            state.cursor.col = orig_col.min(state.buffer.line(row + 1).len());
+        }
+
+        // ── Settings overlay ──────────────────────────────────────────
+        OpenSettings => {
+            state.settings_cursor = 0;
+            state.mode = EditorMode::Settings;
+        }
+
+        CloseSettings => {
+            state.mode = EditorMode::Normal;
+            if let Err(e) = crate::config::save_config(&state.config) {
+                state.status_message = Some(format!("Settings save error: {e}"));
+            }
+        }
+
+        SettingsUp => {
+            state.settings_cursor = state.settings_cursor.saturating_sub(1);
+        }
+
+        SettingsDown => {
+            state.settings_cursor =
+                (state.settings_cursor + 1).min(crate::ui::settings_overlay::SETTINGS_ITEM_COUNT - 1);
+        }
+
+        SettingsToggle => {
+            toggle_setting(state, 0);
+        }
+
+        SettingsAdjust(delta) => {
+            toggle_setting(state, delta);
+        }
     }
 
     Ok(())
@@ -826,6 +895,71 @@ fn build_replace_all_text(
     }
 
     full_text
+}
+
+// ── Settings helpers ───────────────────────────────────────────────────
+
+/// Toggle or adjust the setting at `state.settings_cursor`.
+/// `delta == 0` → toggle bool; `delta == ±1` → adjust numeric/cycle enum.
+fn toggle_setting(state: &mut EditorState, delta: i8) {
+    match state.settings_cursor {
+        0 => state.config.editor.line_numbers = !state.config.editor.line_numbers,
+        1 => state.config.editor.relative_numbers = !state.config.editor.relative_numbers,
+        2 => state.config.editor.syntax_highlight = !state.config.editor.syntax_highlight,
+        3 => state.config.editor.auto_indent = !state.config.editor.auto_indent,
+        4 => state.config.editor.expand_tabs = !state.config.editor.expand_tabs,
+        5 => {
+            let tw = state.config.editor.tab_width as i16 + delta as i16;
+            state.config.editor.tab_width = tw.clamp(1, 8) as u8;
+        }
+        6 => state.config.editor.indent_guides = !state.config.editor.indent_guides,
+        7 => state.config.editor.indent_errors = !state.config.editor.indent_errors,
+        8 => {
+            const STRATEGIES: &[&str] = &["auto", "internal", "osc52"];
+            let cur = STRATEGIES
+                .iter()
+                .position(|&s| s == state.config.clipboard.strategy)
+                .unwrap_or(0);
+            let next = ((cur as i16 + delta as i16).rem_euclid(STRATEGIES.len() as i16)) as usize;
+            state.config.clipboard.strategy = STRATEGIES[next].to_string();
+        }
+        _ => {}
+    }
+    // Apply line-number mode immediately (matches apply_config behaviour).
+    state.line_number_mode = crate::editor::EditorState::line_number_mode_for(&state.config);
+}
+
+// ── Mouse helpers ──────────────────────────────────────────────────────
+
+/// Translate a left-click at absolute terminal coordinates into a cursor move.
+fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState) {
+    // Ignore clicks outside the editor area.
+    if screen_row < state.editor_area_top || screen_col < state.editor_area_left {
+        return;
+    }
+    let rel_row = (screen_row - state.editor_area_top) as usize;
+    let buf_row = (state.viewport.offset_row + rel_row)
+        .min(state.buffer.line_count().saturating_sub(1));
+
+    let rel_col = (screen_col - state.editor_area_left) as usize;
+    let line = state.buffer.line(buf_row);
+
+    // Walk graphemes to find the byte offset that corresponds to rel_col display columns.
+    let mut display = 0usize;
+    let mut byte_pos = line.len(); // default = end of line
+    for (idx, ch) in line.char_indices() {
+        if display >= rel_col {
+            byte_pos = idx;
+            break;
+        }
+        display += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
+    }
+    byte_pos = byte_pos.min(line.len());
+
+    state.cursor.row = buf_row;
+    state.cursor.col = byte_pos;
+    state.selection_anchor = None; // clear any selection on click
+    state.cursor.clamp(&state.buffer);
 }
 
 /// Move one word to the left: skip whitespace left, then skip non-whitespace left.
@@ -1171,5 +1305,111 @@ mod tests {
         state.cursor = Cursor { row: 0, col: 5 };
         apply_action(&mut state, AppAction::DeleteWordAfter).expect("noop");
         assert_eq!(state.buffer.lines, vec!["hello".to_string()]);
+    }
+
+    // ── Auto-indent tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn auto_indent_preserves_leading_spaces() {
+        let mut state = state_with_lines(&["    hello"]);
+        state.cursor = Cursor { row: 0, col: 9 }; // end of line
+        state.config.editor.auto_indent = true;
+        apply_action(&mut state, AppAction::InsertNewline).expect("newline");
+        assert_eq!(state.buffer.lines[1], "    ");
+    }
+
+    #[test]
+    fn auto_indent_empty_line_no_indent() {
+        let mut state = state_with_lines(&[""]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.config.editor.auto_indent = true;
+        apply_action(&mut state, AppAction::InsertNewline).expect("newline");
+        assert_eq!(state.buffer.lines[1], "");
+    }
+
+    #[test]
+    fn auto_indent_disabled_no_indent() {
+        let mut state = state_with_lines(&["    hello"]);
+        state.cursor = Cursor { row: 0, col: 9 };
+        state.config.editor.auto_indent = false;
+        apply_action(&mut state, AppAction::InsertNewline).expect("newline");
+        assert_eq!(state.buffer.lines[1], "");
+    }
+
+    // ── Expand-tabs tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn expand_tabs_inserts_spaces() {
+        let mut state = state_with_lines(&[""]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.config.editor.expand_tabs = true;
+        state.config.editor.tab_width = 4;
+        apply_action(&mut state, AppAction::InsertChar('\t')).expect("tab");
+        assert_eq!(state.buffer.lines[0], "    ");
+    }
+
+    #[test]
+    fn expand_tabs_disabled_inserts_tab() {
+        let mut state = state_with_lines(&[""]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.config.editor.expand_tabs = false;
+        apply_action(&mut state, AppAction::InsertChar('\t')).expect("tab");
+        assert_eq!(state.buffer.lines[0], "\t");
+    }
+
+    // ── Duplicate-line tests ──────────────────────────────────────────────
+
+    #[test]
+    fn duplicate_line_copies_content() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 2 };
+        apply_action(&mut state, AppAction::DuplicateLine).expect("dup");
+        assert_eq!(state.buffer.lines, vec!["hello".to_string(), "hello".to_string()]);
+    }
+
+    #[test]
+    fn duplicate_line_cursor_on_new_line() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 3 };
+        apply_action(&mut state, AppAction::DuplicateLine).expect("dup");
+        assert_eq!(state.cursor.row, 1);
+        assert_eq!(state.cursor.col, 3);
+    }
+
+    #[test]
+    fn duplicate_line_is_undoable() {
+        let mut state = state_with_lines(&["hello"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        apply_action(&mut state, AppAction::DuplicateLine).expect("dup");
+        assert_eq!(state.buffer.line_count(), 2);
+        apply_action(&mut state, AppAction::Undo).expect("undo");
+        assert_eq!(state.buffer.line_count(), 1);
+        assert_eq!(state.buffer.lines[0], "hello");
+    }
+
+    // ── Indent-error detection tests ──────────────────────────────────────
+
+    #[test]
+    fn has_indent_error_yaml_wrong_indent() {
+        use crate::syntax::{has_indent_error, Language};
+        assert!(has_indent_error("   key: val", 4, Language::Yaml)); // 3 spaces, not % 4
+    }
+
+    #[test]
+    fn has_indent_error_yaml_correct_indent() {
+        use crate::syntax::{has_indent_error, Language};
+        assert!(!has_indent_error("    key: val", 4, Language::Yaml)); // 4 spaces = ok
+    }
+
+    #[test]
+    fn has_indent_error_mixed_tabs_spaces() {
+        use crate::syntax::{has_indent_error, Language};
+        assert!(has_indent_error("\t  key: val", 4, Language::Yaml)); // mix
+    }
+
+    #[test]
+    fn has_indent_error_rust_not_checked() {
+        use crate::syntax::{has_indent_error, Language};
+        assert!(!has_indent_error("   fn foo()", 4, Language::Rust)); // Rust not checked
     }
 }

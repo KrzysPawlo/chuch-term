@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.9-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.0-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -155,6 +155,13 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 - **Line numbers** — absolute and relative, toggle with Ctrl+L
 - **Go to line** — Ctrl+G, type a number, Enter
 - **Command palette** — Ctrl+P, type any command name to find and execute it
+- **Auto-indent** — Enter preserves the current line's indentation level
+- **Smart tab** — Tab inserts spaces (configurable width); literal tab mode also available
+- **Duplicate line** — Ctrl+D copies the current line below the cursor
+- **Mouse support** — click anywhere to reposition the cursor
+- **Indent guides** — optional `│` markers at every indentation level
+- **Indentation error hints** — leading whitespace highlighted red when indentation is inconsistent (YAML, Python, Proto3)
+- **Settings overlay** — Ctrl+, opens a live settings panel; changes are saved to config.toml on close
 - **Config file** — `~/.config/chuch-term/config.toml`, hot-reloaded within 2s
 - **Single binary** — no runtime, no dependencies, copy the binary and go
 - **Atomic saves** — tmp→rename pattern, no data loss on crash
@@ -175,7 +182,9 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 
 - type to insert text
 - `Backspace` / `Delete` delete character
-- `Enter` insert new line
+- `Enter` insert new line (auto-indents to match current line)
+- `Tab` insert spaces (or literal tab — see config)
+- `Ctrl+D` duplicate current line
 - `Ctrl+Z` undo
 - `Ctrl+Y` redo
 - `Ctrl+W` delete word before cursor
@@ -220,6 +229,12 @@ On first run, `chuch-term` creates `~/.config/chuch-term/config.toml` with defau
 line_numbers = true
 relative_numbers = false
 syntax_highlight = true
+auto_indent = true        # Enter copies leading whitespace of the current line
+expand_tabs = true        # Tab inserts spaces instead of a literal tab character
+tab_width = 4             # Number of spaces per tab (also controls indent guides)
+indent_guides = false     # Show │ markers at each indentation level in leading whitespace
+indent_errors = false     # Highlight inconsistent indentation in red (YAML, Python, Proto3)
+# indent_error_bg = [70, 20, 20]   # Custom RGB background for indentation errors
 
 [clipboard]
 # "auto" = detect system clipboard (default)
@@ -228,8 +243,9 @@ syntax_highlight = true
 strategy = "auto"
 ```
 
-Open with `Ctrl+P → Open Config`. Changes are picked up within 2 seconds — no restart needed.
-Legacy keys such as `editor.tab_width` and `[theme]` are tolerated but ignored.
+Open with `Ctrl+P → Open Config` or `Ctrl+,` (Settings overlay). The overlay saves
+changes to `config.toml` on close. Config file changes are picked up within 2 seconds — no restart needed.
+Legacy keys such as `[theme]` are tolerated but ignored.
 
 ---
 

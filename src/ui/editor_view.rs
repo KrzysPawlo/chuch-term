@@ -11,6 +11,7 @@ use crate::syntax::TokenKind;
 
 // ── Design tokens ──────────────────────────────────────────────────────
 const TILDE_COLOR: Color = Color::Rgb(60, 60, 60);
+const INDENT_GUIDE: Color = Color::Rgb(45, 45, 45); // very dim guide line
 
 const TEXT_MAIN: Color = Color::Rgb(220, 220, 220); // #dcdcdc
 
@@ -104,8 +105,6 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
 
             // Get syntax tokens for this line
             let tokens: Vec<(usize, usize, TokenKind)> = if syntax_enabled {
-                // We can't call get_or_compute here (immutable borrow of state),
-                // so we compute on the fly. Cache invalidation is handled elsewhere.
                 crate::syntax::highlight_line(&line, lang)
                     .into_iter()
                     .map(|t| (t.start, t.end, t.kind))
@@ -113,6 +112,24 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
             } else {
                 Vec::new()
             };
+
+            // Pre-compute leading-whitespace byte extent.
+            let leading_ws_end: usize = line
+                .char_indices()
+                .take_while(|(_, c)| *c == ' ' || *c == '\t')
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+
+            // Check if this line has an indentation error (YAML / Python / Proto).
+            let tab_width = state.config.editor.tab_width;
+            let line_has_error = state.config.editor.indent_errors
+                && crate::syntax::has_indent_error(&line, tab_width, lang);
+            let error_bg_color = {
+                let [r, g, b] = state.config.editor.indent_error_bg;
+                Color::Rgb(r, g, b)
+            };
+            let guides_on = state.config.editor.indent_guides;
 
             let mut x = area.left();
             let mut display_cols = 0usize;
@@ -123,6 +140,8 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                 if display_cols + ch_width > width || x >= area.right() {
                     break;
                 }
+
+                let in_leading_ws = byte_pos < leading_ws_end;
 
                 // Determine base style from syntax
                 let mut fg = TEXT_MAIN;
@@ -137,6 +156,11 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                             break;
                         }
                     }
+                }
+
+                // Indentation error background (applied before selection so errors are visible).
+                if line_has_error && in_leading_ws {
+                    bg = error_bg_color;
                 }
 
                 // Check selection highlight
@@ -165,8 +189,18 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                     }
                 }
 
-                let style = Style::default().fg(fg).bg(bg).add_modifier(mods);
-                buf[(x, y)].set_char(ch).set_style(style);
+                // Indent guide: replace a space at a tab-stop column with '│'.
+                let is_guide = guides_on
+                    && in_leading_ws
+                    && display_cols > 0
+                    && tab_width > 0
+                    && display_cols % tab_width as usize == 0
+                    && (ch == ' ' || ch == '\t');
+
+                let render_ch = if is_guide { '\u{2502}' } else { ch }; // '│'
+                let final_fg = if is_guide { INDENT_GUIDE } else { fg };
+                let style = Style::default().fg(final_fg).bg(bg).add_modifier(mods);
+                buf[(x, y)].set_char(render_ch).set_style(style);
                 x += 1;
 
                 if ch_width == 2 && x < area.right() {

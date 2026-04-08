@@ -64,69 +64,63 @@ fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer) {
         state.file_display_name(),
         if state.buffer.dirty { " [+]" } else { "" }
     );
-    let position = format!("{}:{}", state.cursor.row + 1, state.cursor.col + 1);
-    let right_text = if let Some(message) = &state.status_message {
-        message.clone()
-    } else if let Some(language) = language_name(state.language()) {
-        format!("{language}  {position}")
-    } else {
-        position.clone()
-    };
 
-    let right_reserved = right_text.width().min(width as usize);
-    let left_budget = width.saturating_sub(right_reserved as u16 + 1);
-    let left_display = truncate_to_width(&left_text, left_budget as usize);
-    let left_has_dirty_marker = left_display.contains("[+]");
+    // ── Right-side: build segments for width calculation then render ──────
+    // Each segment is (text, Style).
+    let row_num = (state.cursor.row + 1).to_string();
+    let col_num = (state.cursor.col + 1).to_string();
 
-    let mut left_x = area.left();
-    for ch in left_display.chars() {
-        if left_x >= area.right() {
-            break;
-        }
-        let style = if left_has_dirty_marker && matches!(ch, '[' | '+' | ']') {
+    let right_width: usize;
+    let right_x: u16;
+
+    if let Some(message) = &state.status_message {
+        // Status message overrides position display.
+        let msg = truncate_to_width(message, width as usize);
+        right_width = msg.width();
+        right_x = area.right().saturating_sub(right_width as u16);
+        let _ = write_text(buf, right_x, y, &msg, Style::default().fg(TEXT_DIM).bg(BG), area.right());
+        // Also render left side and return.
+        let left_budget = width.saturating_sub(right_width as u16 + 1);
+        render_left(buf, &left_text, y, area.left(), left_budget);
+        return;
+    }
+
+    // Normal state: language + styled position.
+    let lang_prefix = language_name(state.language())
+        .map(|l| format!("{l}   "))
+        .unwrap_or_default();
+    // Full right string for width: "{lang}   Ln {row}  Col {col} "
+    let right_full = format!("{lang_prefix}Ln {row_num}  Col {col_num} ");
+    right_width = right_full.width();
+    right_x = area.right().saturating_sub(right_width as u16);
+
+    let mut x = right_x;
+    if !lang_prefix.is_empty() {
+        x = write_text(buf, x, y, &lang_prefix, Style::default().fg(LANG_FG).bg(BG), area.right());
+    }
+    x = write_text(buf, x, y, "Ln ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
+    x = write_text(buf, x, y, &row_num, Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD), area.right());
+    x = write_text(buf, x, y, "  Col ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
+    x = write_text(buf, x, y, &col_num, Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD), area.right());
+    let _ = write_text(buf, x, y, " ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
+
+    let left_budget = width.saturating_sub(right_width as u16 + 1);
+    render_left(buf, &left_text, y, area.left(), left_budget);
+}
+
+fn render_left(buf: &mut Buffer, text: &str, y: u16, start_x: u16, budget: u16) {
+    let display = truncate_to_width(text, budget as usize);
+    let has_dirty = display.contains("[+]");
+    let mut x = start_x;
+    for ch in display.chars() {
+        let style = if has_dirty && matches!(ch, '[' | '+' | ']') {
             Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(TEXT_MAIN).bg(BG)
         };
-        buf[(left_x, y)].set_char(ch).set_style(style);
-        left_x += UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+        buf[(x, y)].set_char(ch).set_style(style);
+        x += UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
     }
-
-    let right_x = area
-        .right()
-        .saturating_sub(truncate_to_width(&right_text, width as usize).width() as u16);
-
-    if state.status_message.is_none() {
-        if let Some(language) = language_name(state.language()) {
-            let language_prefix = format!("{language}  ");
-            let x = write_text(
-                buf,
-                right_x,
-                y,
-                &language_prefix,
-                Style::default().fg(LANG_FG).bg(BG),
-                area.right(),
-            );
-            let _ = write_text(
-                buf,
-                x,
-                y,
-                &position,
-                Style::default().fg(TEXT_DIM).bg(BG),
-                area.right(),
-            );
-            return;
-        }
-    }
-
-    let _ = write_text(
-        buf,
-        right_x,
-        y,
-        &truncate_to_width(&right_text, width as usize),
-        Style::default().fg(TEXT_DIM).bg(BG),
-        area.right(),
-    );
 }
 
 fn render_confirm_quit(area: Rect, buf: &mut Buffer) {

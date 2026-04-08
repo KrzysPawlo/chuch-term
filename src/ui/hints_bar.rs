@@ -55,6 +55,9 @@ impl<'a> Widget for HintsBar<'a> {
             EditorMode::SaveAs => {
                 // SaveAsBar widget handles this — nothing in hints bar
             }
+            EditorMode::Settings => {
+                // SettingsOverlay handles everything — nothing in hints bar
+            }
         }
     }
 }

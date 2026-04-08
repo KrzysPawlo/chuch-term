@@ -63,3 +63,37 @@ pub fn highlight_line(line: &str, lang: Language) -> Vec<SyntaxToken> {
 }
 
 pub mod languages;
+
+/// Returns `true` when `line`'s leading whitespace is likely erroneous for the
+/// given language.  Only checks YAML, Python, and Proto3 — indentation is
+/// syntax-critical there.  For all other languages this always returns `false`.
+///
+/// Error conditions:
+///  - Mixed tabs and spaces in the leading whitespace.
+///  - Leading space count is not a multiple of `tab_width`.
+pub fn has_indent_error(line: &str, tab_width: u8, lang: Language) -> bool {
+    if !matches!(lang, Language::Yaml | Language::Python | Language::Proto) {
+        return false;
+    }
+    let leading: &str = {
+        let end = line
+            .char_indices()
+            .take_while(|(_, c)| *c == ' ' || *c == '\t')
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        &line[..end]
+    };
+    if leading.is_empty() {
+        return false;
+    }
+    let has_tabs = leading.contains('\t');
+    let has_spaces = leading.contains(' ');
+    if has_tabs && has_spaces {
+        return true; // mixed
+    }
+    if has_spaces && tab_width > 0 {
+        return leading.len() % tab_width as usize != 0;
+    }
+    false
+}
