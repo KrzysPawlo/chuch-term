@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.3-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.4-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -45,23 +45,37 @@ Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/release
 | Linux x86_64 (static) | `chuch-term-linux-x86_64.tar.gz` |
 
 ```bash
-# 1. Download and extract (Safari auto-unpacks .gz — use tar xf, not tar xzf)
+# 1. Download and extract
+#    Safari auto-unpacks .gz and saves a plain .tar — use tar xf (not tar xzf)
 tar xf chuch-term-macos-arm.tar        # adjust filename for your platform
 
-# 2. Move to PATH
+# 2. Verify checksum (download the matching .sha256 file from the same release)
+shasum -a 256 -c chuch-term-macos-arm.tar.gz.sha256
+
+# 3. Move to PATH
 sudo mv chuch-term /usr/local/bin/
 
-# 3. macOS Gatekeeper — required for every binary downloaded from the internet
+# 4. macOS Gatekeeper — required for every binary downloaded from the internet
 xattr -d com.apple.quarantine /usr/local/bin/chuch-term
 
-# 4. Verify
+# 5. Verify
 chuch-term --version
 ```
 
-> **Why `xattr`?** macOS quarantines binaries downloaded from the internet until they are
-> notarized by Apple or explicitly trusted. This one-time command removes the quarantine flag.
-> To skip this step entirely, use `cargo install --git` instead — Rust compiles locally
-> so Gatekeeper never applies.
+> **Why `xattr`?** macOS quarantines every binary downloaded from the internet.
+> This one-time command removes the quarantine flag for that binary.
+> To skip `xattr` and `sudo` entirely: use `cargo install --git` — Rust compiles
+> locally so Gatekeeper never triggers and no root access is needed.
+
+**No-sudo alternative** — install to your user directory:
+
+```bash
+mkdir -p ~/.local/bin
+mv chuch-term ~/.local/bin/
+xattr -d com.apple.quarantine ~/.local/bin/chuch-term   # macOS only
+# Add to ~/.zshrc if not already present:
+# export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### cargo install
 

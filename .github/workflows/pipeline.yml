@@ -45,12 +45,19 @@ jobs:
       - run: cargo install cargo-audit --locked
       - run: cargo audit
 
+  deny:
+    name: Deny (licenses + supply chain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
   # ── Release — runs only on version tags (v*.*.*) ──────────────────────
 
   build:
     name: Build / ${{ matrix.asset }}
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, lint, audit]
+    needs: [test, lint, audit, deny]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -88,11 +95,15 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar czf chuch-term-${{ matrix.asset }}.tar.gz chuch-term
           mv chuch-term-${{ matrix.asset }}.tar.gz ../../../
+          cd ../../..
+          shasum -a 256 chuch-term-${{ matrix.asset }}.tar.gz > chuch-term-${{ matrix.asset }}.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: chuch-term-${{ matrix.asset }}
-          path: chuch-term-${{ matrix.asset }}.tar.gz
+          path: |
+            chuch-term-${{ matrix.asset }}.tar.gz
+            chuch-term-${{ matrix.asset }}.tar.gz.sha256
 
   release:
     name: Release
@@ -111,30 +122,40 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
           generate_release_notes: true
           body: |
             ## Install
 
             **macOS Apple Silicon:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-arm.tar.gz | tar xz
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-arm.tar.gz -o chuch-term-macos-arm.tar.gz
+            shasum -a 256 -c chuch-term-macos-arm.tar.gz.sha256
+            tar xzf chuch-term-macos-arm.tar.gz
             sudo mv chuch-term /usr/local/bin/
+            xattr -d com.apple.quarantine /usr/local/bin/chuch-term
             ```
 
             **macOS Intel:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-intel.tar.gz | tar xz
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-intel.tar.gz -o chuch-term-macos-intel.tar.gz
+            shasum -a 256 -c chuch-term-macos-intel.tar.gz.sha256
+            tar xzf chuch-term-macos-intel.tar.gz
             sudo mv chuch-term /usr/local/bin/
+            xattr -d com.apple.quarantine /usr/local/bin/chuch-term
             ```
 
             **Linux x86_64:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-linux-x86_64.tar.gz | tar xz
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-linux-x86_64.tar.gz -o chuch-term-linux-x86_64.tar.gz
+            sha256sum -c chuch-term-linux-x86_64.tar.gz.sha256
+            tar xzf chuch-term-linux-x86_64.tar.gz
             sudo mv chuch-term /usr/local/bin/
             ```
 
-            **cargo install:**
+            **cargo install (no Gatekeeper, no sudo):**
             ```bash
             cargo install --git https://github.com/${{ github.repository }}
             ```

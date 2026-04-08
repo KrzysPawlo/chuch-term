@@ -7,6 +7,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-04-08
+
+### Added
+- `deny.toml` — license allowlist and supply-chain policy (crates.io only, semver pins required)
+- CI: `cargo deny` job checks licenses and sources on every push; build gate now requires it to pass
+- SHA256 checksum files (`.sha256`) generated for every release artifact — attached to GitHub Releases alongside the tarballs
+- SECURITY.md: updated supported versions (0.5.x), added checksum verification instructions, dependency audit table, no-sudo install option
+
+### Changed
+- README: install instructions now include SHA256 verification step, no-sudo `~/.local/bin` alternative, and Gatekeeper explanation
+- Release notes in pipeline now include SHA256 verification commands and `xattr` step for macOS
+
 ## [0.5.3] - 2026-04-08
 
 ### Changed
