@@ -130,36 +130,69 @@ jobs:
           body: |
             ## Install
 
-            Download the `.tar.gz` and the matching `.sha256` file, then:
+            ---
 
-            **macOS Apple Silicon:**
+            ### macOS — Apple Silicon (M1 / M2 / M3 / M4)
+
+            **1. Download both files from Assets below:**
+            - `chuch-term-macos-arm.tar.gz`
+            - `chuch-term-macos-arm.sha256`
+
+            **2. Open Terminal and run:**
             ```bash
-            # Safari auto-decompresses .gz — use tar xf (not tar xzf)
+            cd ~/Downloads
             tar xf chuch-term-macos-arm.tar
             shasum -a 256 -c chuch-term-macos-arm.sha256
             sudo mv chuch-term /usr/local/bin/
             xattr -d com.apple.quarantine /usr/local/bin/chuch-term
+            chuch-term --version
             ```
 
-            **macOS Intel:**
+            > `tar xf` (not `tar xzf`) — Safari auto-decompresses `.gz` on download.
+            > `shasum` should print `chuch-term: OK`.
+            > `xattr` removes macOS quarantine — required for every downloaded binary.
+
+            ---
+
+            ### macOS — Intel
+
+            **1. Download both files from Assets below:**
+            - `chuch-term-macos-intel.tar.gz`
+            - `chuch-term-macos-intel.sha256`
+
+            **2. Open Terminal and run:**
             ```bash
+            cd ~/Downloads
             tar xf chuch-term-macos-intel.tar
             shasum -a 256 -c chuch-term-macos-intel.sha256
             sudo mv chuch-term /usr/local/bin/
             xattr -d com.apple.quarantine /usr/local/bin/chuch-term
+            chuch-term --version
             ```
 
-            **Linux x86_64:**
+            ---
+
+            ### Linux — x86_64
+
+            **1. Download both files from Assets below:**
+            - `chuch-term-linux-x86_64.tar.gz`
+            - `chuch-term-linux-x86_64.sha256`
+
+            **2. Run:**
             ```bash
+            cd ~/Downloads
             tar xzf chuch-term-linux-x86_64.tar.gz
             shasum -a 256 -c chuch-term-linux-x86_64.sha256
             sudo mv chuch-term /usr/local/bin/
+            chuch-term --version
             ```
 
-            **cargo install (no Gatekeeper, no sudo):**
+            ---
+
+            ### cargo install — no download, no Gatekeeper, no sudo
+
             ```bash
             cargo install --git https://github.com/${{ github.repository }}
             ```
 
-            > The `.sha256` checksum is computed on the **binary**, not the archive —
-            > verification works regardless of how your browser handles the download.
+            Requires Rust: [rustup.rs](https://rustup.rs)

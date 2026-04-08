@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.7-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.8-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -44,38 +44,37 @@ Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/release
 | macOS Intel | `chuch-term-macos-intel.tar.gz` |
 | Linux x86_64 (static) | `chuch-term-linux-x86_64.tar.gz` |
 
-Download the `.tar.gz` **and** the matching `.sha256` from the same release, then:
+**1. Download both files** from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
+
+| Platform | Files to download |
+|----------|-------------------|
+| macOS Apple Silicon | `chuch-term-macos-arm.tar.gz` + `chuch-term-macos-arm.sha256` |
+| macOS Intel | `chuch-term-macos-intel.tar.gz` + `chuch-term-macos-intel.sha256` |
+| Linux x86_64 | `chuch-term-linux-x86_64.tar.gz` + `chuch-term-linux-x86_64.sha256` |
+
+**2. Open Terminal and run** (example for macOS Apple Silicon):
 
 ```bash
-# 1. Extract
-#    Safari auto-decompresses .gz — use tar xf regardless
-tar xf chuch-term-macos-arm.tar        # adjust filename for your platform
-
-# 2. Verify binary checksum (checksum is on the binary, not the archive — Safari-proof)
-shasum -a 256 -c chuch-term-macos-arm.sha256
-
-# 3. Move to PATH
+cd ~/Downloads
+tar xf chuch-term-macos-arm.tar                         # Safari saves as .tar — this always works
+shasum -a 256 -c chuch-term-macos-arm.sha256            # should print: chuch-term: OK
 sudo mv chuch-term /usr/local/bin/
-
-# 4. macOS Gatekeeper — required for every binary downloaded from the internet
-xattr -d com.apple.quarantine /usr/local/bin/chuch-term
-
-# 5. Verify
+xattr -d com.apple.quarantine /usr/local/bin/chuch-term # required on macOS for every downloaded binary
 chuch-term --version
 ```
 
-> **Why `xattr`?** macOS quarantines every binary downloaded from the internet.
-> This one-time command removes the quarantine flag for that binary.
-> To skip `xattr` and `sudo` entirely: use `cargo install --git` — Rust compiles
-> locally so Gatekeeper never triggers and no root access is needed.
+> `xattr` removes the macOS Gatekeeper quarantine flag. It is required every time you
+> install a new binary downloaded from the internet and is not a security bypass —
+> it is the standard way to trust a binary you have explicitly chosen to install.
+> To avoid it entirely, use `cargo install --git` instead.
 
-**No-sudo alternative** — install to your user directory:
+**No-sudo alternative** — install to your user directory (no admin password needed):
 
 ```bash
 mkdir -p ~/.local/bin
 mv chuch-term ~/.local/bin/
 xattr -d com.apple.quarantine ~/.local/bin/chuch-term   # macOS only
-# Add to ~/.zshrc if not already present:
+# Make sure ~/.local/bin is in your PATH — add to ~/.zshrc if needed:
 # export PATH="$HOME/.local/bin:$PATH"
 ```
 

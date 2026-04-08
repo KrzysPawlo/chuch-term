@@ -7,6 +7,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-04-08
+
+### Changed
+- Release notes and README: install instructions rewritten with explicit numbered steps, file table, and per-platform code blocks — no ambiguity about which files to download or which commands to run
+
 ## [0.5.7] - 2026-04-08
 
 ### Fixed
