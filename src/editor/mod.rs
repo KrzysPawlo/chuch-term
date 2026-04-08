@@ -29,6 +29,8 @@ pub enum EditorMode {
     CommandPalette,
     /// Find and replace mode.
     Replace,
+    /// Save-as prompt — user types a filename to save the buffer to.
+    SaveAs,
 }
 
 /// Line number display mode.
@@ -73,6 +75,9 @@ pub struct EditorState {
 
     // ── Go-to-line ───────────────────────────────────────────────────────
     pub goto_input: String,
+
+    // ── Save-as ──────────────────────────────────────────────────────────
+    pub saveas_input: String,
 
     // ── Command palette ──────────────────────────────────────────────────
     pub palette_query: String,
@@ -121,6 +126,43 @@ impl EditorState {
             clipboard: String::new(),
             line_number_mode,
             goto_input: String::new(),
+            saveas_input: String::new(),
+            palette_query: String::new(),
+            palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
+            palette_cursor: 0,
+            config,
+            config_mtime,
+            previous_buffer: None,
+        }
+    }
+
+    /// Open a new empty buffer pre-associated with `path` (file does not need to exist yet).
+    pub fn new_with_path(path: &Path) -> Self {
+        let (config, config_msg) = crate::config::load_config();
+        let line_number_mode = Self::line_number_mode_for(&config);
+        let config_mtime = crate::config::config_mtime();
+        let mut buffer = TextBuffer::new_empty();
+        buffer.file_path = Some(path.to_path_buf());
+        Self {
+            buffer,
+            cursor: Cursor::new(),
+            viewport: Viewport::new(),
+            viewport_height: 0,
+            mode: EditorMode::Normal,
+            status_message: config_msg,
+            should_quit: false,
+            pre_help_mode: EditorMode::Normal,
+            history: crate::editor::history::History::new(),
+            search_query: String::new(),
+            search_results: Vec::new(),
+            search_result_idx: 0,
+            replace_query: String::new(),
+            search_case_sensitive: false,
+            selection_anchor: None,
+            clipboard: String::new(),
+            line_number_mode,
+            goto_input: String::new(),
+            saveas_input: String::new(),
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
@@ -154,6 +196,7 @@ impl EditorState {
             clipboard: String::new(),
             line_number_mode,
             goto_input: String::new(),
+            saveas_input: String::new(),
             palette_query: String::new(),
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,

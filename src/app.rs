@@ -18,7 +18,13 @@ use crate::ui::draw;
 pub fn run(file_path: Option<PathBuf>) -> Result<()> {
     // ── Build editor state ─────────────────────────────────────────────
     let mut state = match file_path {
-        Some(ref path) => EditorState::from_file(path)?,
+        Some(ref path) => {
+            if path.exists() {
+                EditorState::from_file(path)?
+            } else {
+                EditorState::new_with_path(path)
+            }
+        }
         None => EditorState::new_empty(),
     };
 

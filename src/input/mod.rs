@@ -60,6 +60,12 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         Save => {
+            if state.buffer.file_path.is_none() {
+                // No path yet — enter SaveAs mode so the user can type a filename.
+                state.saveas_input = String::new();
+                state.mode = EditorMode::SaveAs;
+                return Ok(());
+            }
             let was_confirm_quit = state.mode == EditorMode::ConfirmQuit;
             match state.buffer.save() {
                 Ok(()) => {
@@ -72,6 +78,56 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
                 }
                 Err(err) => {
                     state.mode = EditorMode::Normal;
+                    state.status_message = Some(format!("Save error: {err}"));
+                }
+            }
+        }
+
+        SaveAsChar(c) => {
+            state.saveas_input.push(c);
+        }
+
+        SaveAsBackspace => {
+            state.saveas_input.pop();
+        }
+
+        CancelSaveAs => {
+            state.saveas_input.clear();
+            state.mode = EditorMode::Normal;
+        }
+
+        SaveAsSubmit => {
+            let raw = state.saveas_input.trim().to_string();
+            if raw.is_empty() {
+                state.status_message = Some("Save cancelled — no filename entered.".to_string());
+                state.mode = EditorMode::Normal;
+                return Ok(());
+            }
+            // Expand leading ~ to the home directory.
+            let expanded = if raw.starts_with("~/") || raw == "~" {
+                let home = std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_default();
+                home.join(raw.trim_start_matches("~/"))
+            } else {
+                std::path::PathBuf::from(&raw)
+            };
+            state.buffer.file_path = Some(expanded);
+            match state.buffer.save() {
+                Ok(()) => {
+                    state.mode = EditorMode::Normal;
+                    state.status_message = Some(format!(
+                        "Saved: {}",
+                        state.buffer.file_path.as_ref()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    ));
+                }
+                Err(err) => {
+                    // Undo the path assignment so the user can try again.
+                    state.buffer.file_path = None;
+                    state.mode = EditorMode::SaveAs;
                     state.status_message = Some(format!("Save error: {err}"));
                 }
             }

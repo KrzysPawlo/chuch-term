@@ -5,6 +5,7 @@ pub mod help_overlay;
 pub mod hints_bar;
 pub mod line_numbers;
 pub mod replace_bar;
+pub mod saveas_bar;
 pub mod search_bar;
 pub mod status_bar;
 
@@ -20,6 +21,7 @@ use help_overlay::HelpOverlay;
 use hints_bar::HintsBar;
 use line_numbers::{gutter_width, LineNumbersGutter};
 use replace_bar::ReplaceBar;
+use saveas_bar::SaveAsBar;
 use search_bar::SearchBar;
 use status_bar::StatusBar;
 
@@ -70,6 +72,9 @@ pub fn draw(frame: &mut Frame, state: &EditorState) {
         }
         EditorMode::GoToLine => {
             frame.render_widget(GotoBar { state }, hints_area);
+        }
+        EditorMode::SaveAs => {
+            frame.render_widget(SaveAsBar { state }, hints_area);
         }
         EditorMode::CommandPalette => {
             // No hints bar content — palette covers everything

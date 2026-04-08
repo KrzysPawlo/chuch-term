@@ -52,6 +52,9 @@ impl<'a> Widget for HintsBar<'a> {
             EditorMode::CommandPalette => {
                 // Palette overlay handles everything — nothing here
             }
+            EditorMode::SaveAs => {
+                // SaveAsBar widget handles this — nothing in hints bar
+            }
         }
     }
 }

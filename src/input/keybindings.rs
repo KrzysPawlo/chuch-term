@@ -112,6 +112,12 @@ pub enum AppAction {
     // Delete word
     DeleteWordBefore,     // Ctrl+W
     DeleteWordAfter,      // Ctrl+Delete
+
+    // Save-as
+    SaveAsChar(char),     // printable key while in SaveAs mode
+    SaveAsBackspace,      // Backspace in SaveAs mode
+    SaveAsSubmit,         // Enter in SaveAs mode — sets path and saves
+    CancelSaveAs,         // Esc in SaveAs mode
 }
 
 /// Map a raw key event + current editor mode to a semantic AppAction.
@@ -208,6 +214,15 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                 }
             }
         }
+
+        // ── Save-as prompt ────────────────────────────────────────────
+        EditorMode::SaveAs => match event.code {
+            KeyCode::Esc => AppAction::CancelSaveAs,
+            KeyCode::Enter => AppAction::SaveAsSubmit,
+            KeyCode::Backspace => AppAction::SaveAsBackspace,
+            KeyCode::Char(c) => AppAction::SaveAsChar(c),
+            _ => AppAction::Noop,
+        },
 
         // ── Normal editing ────────────────────────────────────────────
         EditorMode::Normal => {

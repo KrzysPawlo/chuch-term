@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-04-08
+
+### Added
+- Save-as mode — `Ctrl+S` on a new buffer (no filename) opens a prompt at the bottom: type a path and press `Enter` to save, `Esc` to cancel; `~` expansion supported
+
+### Fixed
+- `chuch-term nonexistent.json` now opens an empty buffer pre-named `nonexistent.json` instead of exiting with "Cannot open file" — matches nano/vim behaviour
+
 ## [0.5.8] - 2026-04-08
 
 ### Changed
