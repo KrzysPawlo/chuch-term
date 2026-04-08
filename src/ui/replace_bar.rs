@@ -6,10 +6,6 @@ use ratatui::{
 };
 use crate::editor::EditorState;
 
-const BG: Color = Color::Rgb(18, 18, 18);
-const ACCENT: Color = Color::Rgb(176, 196, 200);   // #b0c4c8
-const DIM: Color = Color::Rgb(90, 90, 90);          // #5a5a5a
-const AMBER: Color = Color::Rgb(255, 153, 68);      // #ff9944
 const SEP: Color = Color::Rgb(45, 45, 45);
 
 fn put(buf: &mut Buffer, x: u16, y: u16, text: &str, style: Style, max_x: u16) -> u16 {
@@ -29,16 +25,25 @@ pub struct ReplaceBar<'a> {
 impl<'a> Widget for ReplaceBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 { return; }
+        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
+        let bg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let accent_color = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.warning_rgb();
+        let amber_color = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim_color = Color::Rgb(r, g, b);
+
         let y = area.top();
         for x in area.left()..area.right() {
-            buf[(x, y)].set_bg(BG).set_char(' ');
+            buf[(x, y)].set_bg(bg).set_fg(dim_color).set_char(' ');
         }
 
-        let accent_bold = Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD);
-        let accent = Style::default().fg(ACCENT).bg(BG);
-        let amber_bold = Style::default().fg(AMBER).bg(BG).add_modifier(Modifier::BOLD);
-        let dim = Style::default().fg(DIM).bg(BG);
-        let sep = Style::default().fg(SEP).bg(BG);
+        let accent_bold = Style::default().fg(accent_color).bg(bg).add_modifier(Modifier::BOLD);
+        let accent = Style::default().fg(accent_color).bg(bg);
+        let amber_bold = Style::default().fg(amber_color).bg(bg).add_modifier(Modifier::BOLD);
+        let dim = Style::default().fg(dim_color).bg(bg);
+        let sep = Style::default().fg(SEP).bg(bg);
 
         let max_x = area.right();
         let mut x = area.left() + 1;

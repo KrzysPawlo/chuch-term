@@ -269,7 +269,6 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                     KeyCode::Char('o') => AppAction::GoBackBuffer,
                     KeyCode::Char('r') => AppAction::StartReplace,
                     KeyCode::Char('d') => AppAction::DuplicateLine,
-                    KeyCode::Char(',') => AppAction::OpenSettings,
                     KeyCode::Char('w') => AppAction::DeleteWordBefore,
                     KeyCode::Left if shift => AppAction::ShiftWordLeft,
                     KeyCode::Right if shift => AppAction::ShiftWordRight,
@@ -291,6 +290,7 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                 }
             } else if alt {
                 match event.code {
+                    KeyCode::Char(',') => AppAction::OpenSettings,  // Alt+, (Option+, on macOS)
                     KeyCode::Char('u') => AppAction::UppercaseSelection,
                     KeyCode::Char('l') => AppAction::LowercaseSelection,
                     _ => AppAction::Noop,

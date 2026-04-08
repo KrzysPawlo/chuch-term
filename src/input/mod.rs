@@ -462,16 +462,24 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         PaletteUp => {
-            if state.palette_cursor > 0 {
-                state.palette_cursor -= 1;
+            if !state.palette_matches.is_empty() {
+                if state.palette_cursor == 0 {
+                    // Wrap: jump to the last item.
+                    state.palette_cursor = state.palette_matches.len() - 1;
+                } else {
+                    state.palette_cursor -= 1;
+                }
             }
         }
 
         PaletteDown => {
-            if !state.palette_matches.is_empty()
-                && state.palette_cursor + 1 < state.palette_matches.len()
-            {
-                state.palette_cursor += 1;
+            if !state.palette_matches.is_empty() {
+                if state.palette_cursor + 1 >= state.palette_matches.len() {
+                    // Wrap: jump back to the first item.
+                    state.palette_cursor = 0;
+                } else {
+                    state.palette_cursor += 1;
+                }
             }
         }
 

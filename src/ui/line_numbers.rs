@@ -6,9 +6,7 @@ use ratatui::{
 };
 use crate::editor::{EditorState, LineNumberMode};
 
-const ACCENT: Color = Color::Rgb(176, 196, 200);  // #b0c4c8
-const DIM: Color = Color::Rgb(90, 90, 90);        // #5a5a5a
-const BG: Color = Color::Rgb(10, 10, 10);         // #0a0a0a
+const BG: Color = Color::Rgb(10, 10, 10);  // #0a0a0a — gutter is darker than bar bg
 
 /// Calculate the gutter width needed to display line numbers.
 pub fn gutter_width(line_count: usize) -> u16 {
@@ -26,6 +24,11 @@ impl<'a> Widget for LineNumbersGutter<'a> {
         if area.width == 0 || area.height == 0 {
             return;
         }
+
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let accent = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim = Color::Rgb(r, g, b);
 
         let offset = self.state.viewport.offset_row;
         let line_count = self.state.buffer.line_count();
@@ -61,9 +64,9 @@ impl<'a> Widget for LineNumbersGutter<'a> {
             };
 
             let style = if is_current {
-                Style::default().fg(ACCENT).bg(BG)
+                Style::default().fg(accent).bg(BG)
             } else {
-                Style::default().fg(DIM).bg(BG)
+                Style::default().fg(dim).bg(BG)
             };
 
             // Right-align the number in the gutter (leave 1 space on the right)

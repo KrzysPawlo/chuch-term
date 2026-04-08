@@ -7,6 +7,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-08
+
+### Fixed
+- **Settings shortcut** changed from `Ctrl+,` to `Alt+,` (`Option+,` on macOS) —
+  `Ctrl+,` is outside the standard `Ctrl+A–Z` range and caused a system beep on macOS
+  before the terminal could pass the event to chuch-term
+- **Bottom bar colour bleed** — hints bar and status bar now explicitly set both
+  foreground and background colour for every cell; previously `set_bg()` was called
+  without `set_fg()`, leaving stale foreground from a previous ratatui frame which
+  caused a magenta/pink bar on terminals with non-default or non-truecolor setups
+- **Selection ghost** (`Ctrl+A` → `Ctrl+X`) — editor cells now use an explicit dark
+  background (`#121212`) instead of `Color::Reset`; `Color::Reset` deferred to the
+  terminal's own default background colour, which could leave coloured artefacts
+  after selection was cleared or text was deleted
+- **Command Palette wrap-around** — `↓` on the last item now jumps to the first;
+  `↑` on the first item now jumps to the last
+- **Command Palette contrast** — description text colour changed from `#5a5a5a` to
+  `#787878` for better readability on dim displays and non-truecolor terminals
+- **`[theme]` section in config.toml is now fully functional** — `accent`, `warning`,
+  `dim`, and `bg_bar` accept hex colour strings (e.g. `accent = "#b0c4c8"`) and are
+  applied across all UI components: hints bar, status bar, command palette, settings
+  overlay, help overlay, line numbers, search/replace/goto/saveas bars, and the welcome
+  screen. Changes are hot-reloaded within 2 seconds. Settings overlay close preserves
+  the `[theme]` section in `config.toml`
+- **Help overlay** now shows `Ctrl+D` (duplicate line) and `Alt+,` (settings overlay),
+  which were missing despite both features being fully implemented since v0.6.0
+
+### Added
+- **`--debug-env` flag** — `chuch-term --debug-env` prints `TERM`, `COLORTERM`,
+  `TERM_PROGRAM`, terminal size, OS/arch, and detected colour depth; useful for
+  diagnosing rendering issues across different machines and terminal emulators
+- **README: Requirements section** — documents truecolor terminal requirements,
+  how to set `COLORTERM=truecolor`, and minimum CLT version on macOS
+
 ## [0.6.0] - 2026-04-08
 
 ### Added
@@ -17,7 +51,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Mouse support** — left click positions the cursor; clears selection; requires terminal to support mouse events
 - **Indent guides** — optional `│` markers at every `tab_width` column in leading whitespace; `editor.indent_guides` (default `false`)
 - **Indentation error hints** — red background on leading whitespace of lines with inconsistent indentation in YAML, Python, and Proto3 files; `editor.indent_errors` (default `false`); colour configurable via `editor.indent_error_bg = [r, g, b]`
-- **Settings overlay** — `Ctrl+,` opens an interactive settings panel; `↑/↓` to navigate, `Space/Enter` to toggle, `←/→` to adjust numeric/enum values; `Esc` closes and saves all changes to `config.toml`
+- **Settings overlay** — `Ctrl+,` opens an interactive settings panel (changed to `Alt+,` in v0.6.1); `↑/↓` to navigate, `Space/Enter` to toggle, `←/→` to adjust numeric/enum values; `Esc` closes and saves all changes to `config.toml`
 - `open settings` command added to the command palette
 
 ## [0.5.9] - 2026-04-08

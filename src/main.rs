@@ -21,6 +21,10 @@ struct Args {
     /// Remove the chuch-term binary and all configuration, then exit.
     #[arg(long)]
     uninstall: bool,
+
+    /// Print terminal environment diagnostics (TERM, COLORTERM, color depth) and exit.
+    #[arg(long)]
+    debug_env: bool,
 }
 
 fn main() -> Result<()> {
@@ -28,7 +32,38 @@ fn main() -> Result<()> {
     if args.uninstall {
         return uninstall();
     }
+    if args.debug_env {
+        print_debug_env();
+        return Ok(());
+    }
     app::run(args.file)
+}
+
+fn print_debug_env() {
+    use std::env;
+    println!("chuch-term {} — environment diagnostics", env!("CARGO_PKG_VERSION"));
+    println!();
+    println!("  TERM         : {}", env::var("TERM").unwrap_or_else(|_| "(not set)".into()));
+    println!("  COLORTERM    : {}", env::var("COLORTERM").unwrap_or_else(|_| "(not set)".into()));
+    println!("  TERM_PROGRAM : {}", env::var("TERM_PROGRAM").unwrap_or_else(|_| "(not set)".into()));
+    if let Ok((w, h)) = crossterm::terminal::size() {
+        println!("  Terminal size: {}×{}", w, h);
+    } else {
+        println!("  Terminal size: (unable to detect)");
+    }
+    println!("  OS           : {}", std::env::consts::OS);
+    println!("  Arch         : {}", std::env::consts::ARCH);
+    let color_depth = match env::var("COLORTERM").as_deref() {
+        Ok("truecolor") | Ok("24bit") => "truecolor (24-bit RGB) ✓",
+        _ => match env::var("TERM").as_deref() {
+            Ok(t) if t.contains("256color") => "256-color (truecolor NOT confirmed — colours may look wrong)",
+            _ => "basic / unknown — colours will likely render incorrectly",
+        },
+    };
+    println!("  Color support: {}", color_depth);
+    println!();
+    println!("  Hint: add the following to your shell profile for best results:");
+    println!("        export COLORTERM=truecolor");
 }
 
 fn uninstall() -> Result<()> {

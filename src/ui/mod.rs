@@ -93,7 +93,7 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
 
     // ── Overlays (cover everything) ────────────────────────────────────
     if state.mode == EditorMode::Help {
-        frame.render_widget(HelpOverlay, area);
+        frame.render_widget(HelpOverlay { state }, area);
         return;
     }
 

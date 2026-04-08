@@ -6,9 +6,6 @@ use ratatui::{
 };
 use crate::editor::EditorState;
 
-const BG: Color = Color::Rgb(18, 18, 18);
-const ACCENT: Color = Color::Rgb(176, 196, 200);
-const DIM: Color = Color::Rgb(90, 90, 90);
 
 /// Go-to-line bar rendered in the hints area.
 pub struct GotoBar<'a> {
@@ -20,9 +17,16 @@ impl<'a> Widget for GotoBar<'a> {
         if area.height == 0 {
             return;
         }
+        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
+        let bg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let accent = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim = Color::Rgb(r, g, b);
+
         let y = area.top();
         for x in area.left()..area.right() {
-            buf[(x, y)].set_bg(BG).set_char(' ');
+            buf[(x, y)].set_bg(bg).set_fg(dim).set_char(' ');
         }
 
         let line_count = self.state.buffer.line_count();
@@ -33,10 +37,10 @@ impl<'a> Widget for GotoBar<'a> {
         let hint = "   Enter Confirm  \u{00b7}  Esc Cancel";
 
         let accent_style = Style::default()
-            .fg(ACCENT)
-            .bg(BG)
+            .fg(accent)
+            .bg(bg)
             .add_modifier(Modifier::BOLD);
-        let dim_style = Style::default().fg(DIM).bg(BG);
+        let dim_style = Style::default().fg(dim).bg(bg);
 
         let mut x = area.left();
         let max_x = area.right();

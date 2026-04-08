@@ -6,13 +6,9 @@ use ratatui::{
 };
 use crate::editor::{EditorMode, EditorState};
 
-// ── Design tokens ──────────────────────────────────────────────────────
-const BG: Color = Color::Rgb(18, 18, 18);           // #121212
-const KEY_FG: Color = Color::Rgb(176, 196, 200);    // #b0c4c8  accent
-const DESC_FG: Color = Color::Rgb(90, 90, 90);      // #5a5a5a  dim description
-const SEP_FG: Color = Color::Rgb(45, 45, 45);       // #2d2d2d  separator ·
-const WARN_FG: Color = Color::Rgb(255, 153, 68);    // #ff9944  amber for confirm state
-const WARN_SEP: Color = Color::Rgb(100, 60, 20);    // dim amber separator
+// ── Hardcoded (non-themed) design tokens ───────────────────────────────
+const SEP_FG:   Color = Color::Rgb(45, 45, 45);    // #2d2d2d  separator ·
+const WARN_SEP: Color = Color::Rgb(100, 60, 20);   // dim amber separator
 
 /// One-row contextual hints bar rendered below the status bar.
 pub struct HintsBar<'a> {
@@ -26,37 +22,38 @@ impl<'a> Widget for HintsBar<'a> {
         }
         let y = area.top();
 
-        // Fill background.
+        // Resolve theme colours from config.
+        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
+        let bg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let accent = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.warning_rgb();
+        let warning = Color::Rgb(r, g, b);
+
+        // Fill background — set both fg and bg explicitly to prevent style leaks
+        // across ratatui frames (set_bg alone leaves fg from the previous frame).
         for x in area.left()..area.right() {
-            buf[(x, y)].set_bg(BG).set_char(' ');
+            buf[(x, y)].set_style(Style::default().bg(bg).fg(dim)).set_char(' ');
         }
 
         match self.state.mode {
             EditorMode::Normal => {
                 if self.state.selection_anchor.is_some() {
-                    render_selection_hints(area, buf);
+                    render_selection_hints(area, buf, accent, dim, bg);
                 } else {
-                    render_normal(area, buf, self.state.previous_buffer.is_some());
+                    render_normal(area, buf, self.state.previous_buffer.is_some(), accent, dim, bg);
                 }
             }
-            EditorMode::ConfirmQuit => render_confirm(area, buf),
-            EditorMode::Help => render_help(area, buf),
+            EditorMode::ConfirmQuit => render_confirm(area, buf, warning, bg),
+            EditorMode::Help => render_help(area, buf, dim, bg),
             EditorMode::Search | EditorMode::GoToLine => {
-                // These modes render their own bar widget (search_bar / goto_bar)
-                // This fallback should not be reached since mod.rs dispatches them,
-                // but keep it safe.
+                // These modes render their own bar widget (search_bar / goto_bar).
             }
-            EditorMode::Replace => {
-                // ReplaceBar widget handles this — nothing in hints bar
-            }
-            EditorMode::CommandPalette => {
-                // Palette overlay handles everything — nothing here
-            }
-            EditorMode::SaveAs => {
-                // SaveAsBar widget handles this — nothing in hints bar
-            }
-            EditorMode::Settings => {
-                // SettingsOverlay handles everything — nothing in hints bar
+            EditorMode::Replace | EditorMode::CommandPalette
+            | EditorMode::SaveAs | EditorMode::Settings => {
+                // Respective overlays/bars handle these modes.
             }
         }
     }
@@ -101,15 +98,14 @@ fn render_hints(
     }
 }
 
-fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool) {
-    let key_style = Style::default().fg(KEY_FG).bg(BG).add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(DESC_FG).bg(BG);
-    let sep_style = Style::default().fg(SEP_FG).bg(BG);
+fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool, accent: Color, dim: Color, bg: Color) {
+    let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(dim).bg(bg);
+    let sep_style  = Style::default().fg(SEP_FG).bg(bg);
 
     if has_prev {
         render_hints(
-            area,
-            buf,
+            area, buf,
             &[
                 ("^S", "Save"),
                 ("^Z", "Undo"),
@@ -118,14 +114,11 @@ fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool) {
                 ("^O", "Back"),
                 ("^H", "Help"),
             ],
-            key_style,
-            desc_style,
-            sep_style,
+            key_style, desc_style, sep_style,
         );
     } else {
         render_hints(
-            area,
-            buf,
+            area, buf,
             &[
                 ("^S", "Save"),
                 ("^Z", "Undo"),
@@ -133,58 +126,50 @@ fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool) {
                 ("^P", "Commands"),
                 ("^H", "Help"),
             ],
-            key_style,
-            desc_style,
-            sep_style,
+            key_style, desc_style, sep_style,
         );
     }
 }
 
-fn render_selection_hints(area: Rect, buf: &mut Buffer) {
-    let key_style = Style::default().fg(KEY_FG).bg(BG).add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(DESC_FG).bg(BG);
-    let sep_style = Style::default().fg(SEP_FG).bg(BG);
+fn render_selection_hints(area: Rect, buf: &mut Buffer, accent: Color, dim: Color, bg: Color) {
+    let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(dim).bg(bg);
+    let sep_style  = Style::default().fg(SEP_FG).bg(bg);
 
     render_hints(
-        area,
-        buf,
+        area, buf,
         &[
             ("^C", "Copy"),
             ("^X", "Cut"),
             ("^V", "Paste"),
             ("Esc", "Clear"),
         ],
-        key_style,
-        desc_style,
-        sep_style,
+        key_style, desc_style, sep_style,
     );
 }
 
-fn render_confirm(area: Rect, buf: &mut Buffer) {
-    let key_style = Style::default().fg(WARN_FG).bg(BG).add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(WARN_FG).bg(BG);
-    let sep_style = Style::default().fg(WARN_SEP).bg(BG);
+fn render_confirm(area: Rect, buf: &mut Buffer, warning: Color, bg: Color) {
+    let key_style  = Style::default().fg(warning).bg(bg).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(warning).bg(bg);
+    let sep_style  = Style::default().fg(WARN_SEP).bg(bg);
 
     render_hints(
-        area,
-        buf,
+        area, buf,
         &[
             ("^Q", "Force Quit"),
             ("^S", "Save & Quit"),
             ("Esc", "Cancel"),
         ],
-        key_style,
-        desc_style,
-        sep_style,
+        key_style, desc_style, sep_style,
     );
 }
 
-fn render_help(area: Rect, buf: &mut Buffer) {
+fn render_help(area: Rect, buf: &mut Buffer, dim: Color, bg: Color) {
     let text = "Esc  Close Help";
     let text_len = text.chars().count() as u16;
     let x = area
         .left()
         .saturating_add(area.width.saturating_sub(text_len) / 2);
-    let style = Style::default().fg(SEP_FG).bg(BG);
+    let style = Style::default().fg(dim).bg(bg);
     put(buf, x, area.top(), text, style, area.right());
 }

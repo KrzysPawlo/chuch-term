@@ -4,23 +4,24 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::Widget,
 };
+use crate::editor::EditorState;
 
-// ── Design tokens ──────────────────────────────────────────────────────
+// ── Hardcoded (non-themed) design tokens ──────────────────────────────
 const OVERLAY_BG: Color = Color::Rgb(10, 10, 10);      // #0a0a0a  deep cosmic black
-const HEADER_FG: Color = Color::Rgb(176, 196, 200);    // #b0c4c8  accent — product name
 const VERSION_FG: Color = Color::Rgb(50, 50, 50);      // #323232  very dim version
 const SECTION_FG: Color = Color::Rgb(130, 130, 130);   // #828282  section headers
-const KEY_FG: Color = Color::Rgb(255, 153, 68);        // #ff9944  amber keys
-const DESC_FG: Color = Color::Rgb(190, 190, 190);      // #bebebe  descriptions
-const RULE_FG: Color = Color::Rgb(32, 32, 32);         // #202020  separator lines
-const FOOTER_FG: Color = Color::Rgb(50, 50, 50);       // #323232  footer hint
+const DESC_FG:    Color = Color::Rgb(190, 190, 190);   // #bebebe  descriptions
+const RULE_FG:    Color = Color::Rgb(32, 32, 32);      // #202020  separator lines
+const FOOTER_FG:  Color = Color::Rgb(50, 50, 50);      // #323232  footer hint
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Full-screen help overlay. Rendered on top of everything when mode == Help.
-pub struct HelpOverlay;
+pub struct HelpOverlay<'a> {
+    pub state: &'a EditorState,
+}
 
-impl Widget for HelpOverlay {
+impl<'a> Widget for HelpOverlay<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Fill entire area with overlay background first — this covers all existing cells.
         for y in area.top()..area.bottom() {
@@ -32,12 +33,17 @@ impl Widget for HelpOverlay {
             }
         }
 
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let accent = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.warning_rgb();
+        let key_fg = Color::Rgb(r, g, b);
+
         if area.width < 50 || area.height < 12 {
-            render_compact(area, buf);
+            render_compact(area, buf, accent);
             return;
         }
 
-        render_full(area, buf);
+        render_full(area, buf, accent, key_fg);
     }
 }
 
@@ -103,14 +109,14 @@ fn kv(buf: &mut Buffer, y: u16, x: u16, max_x: u16, key: &str, desc: &str, style
 
 // ── Full layout (≥ 50 cols, ≥ 12 rows) ────────────────────────────────
 
-fn render_full(area: Rect, buf: &mut Buffer) {
+fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
     let margin = area.left() + 3;
     let right = area.right().saturating_sub(3);
     let mut y = area.top() + 1;
 
     // ── Header ────────────────────────────────────────────────────────
     let header_style = Style::default()
-        .fg(HEADER_FG)
+        .fg(accent)
         .bg(OVERLAY_BG)
         .add_modifier(Modifier::BOLD);
 
@@ -139,7 +145,7 @@ fn render_full(area: Rect, buf: &mut Buffer) {
         .add_modifier(Modifier::BOLD);
     let kv_styles = KvStyles {
         key_w: KEY_W,
-        key: Style::default().fg(KEY_FG).bg(OVERLAY_BG).add_modifier(Modifier::BOLD),
+        key: Style::default().fg(key_fg).bg(OVERLAY_BG).add_modifier(Modifier::BOLD),
         desc: Style::default().fg(DESC_FG).bg(OVERLAY_BG),
     };
 
@@ -164,9 +170,13 @@ fn render_full(area: Rect, buf: &mut Buffer) {
         ("Ctrl+P",        "Command palette", "Ctrl+R",         "Find & replace"),
         ("Ctrl+A",        "Select all",      "Ctrl+O",         "Go back (prev file)"),
         ("Alt+U / Alt+L", "Upper/Lowercase", "Ctrl+W / Del",   "Delete word \u{2190}/\u{2192}"),
+        ("Ctrl+D",        "Duplicate line",  "Alt+,",          "Settings"),
     ];
 
     for (k1, d1, k2, d2) in rows {
+        if y >= area.bottom().saturating_sub(3) {
+            break;
+        }
         if !k1.is_empty() {
             kv(buf, y, col1, col2, k1, d1, &kv_styles);
         }
@@ -196,7 +206,7 @@ fn render_full(area: Rect, buf: &mut Buffer) {
 
 // ── Compact layout (narrow / short terminal) ──────────────────────────
 
-fn render_compact(area: Rect, buf: &mut Buffer) {
+fn render_compact(area: Rect, buf: &mut Buffer, accent: Color) {
     let y = area.top() + area.height / 2;
     let msg = "chuch-term  \u{2014}  Esc to close help";
     let msg_len = msg.chars().count() as u16;
@@ -208,7 +218,7 @@ fn render_compact(area: Rect, buf: &mut Buffer) {
         x,
         y,
         msg,
-        Style::default().fg(HEADER_FG).bg(OVERLAY_BG),
+        Style::default().fg(accent).bg(OVERLAY_BG),
         area.right(),
     );
 }

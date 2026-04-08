@@ -6,9 +6,6 @@ use ratatui::{
 };
 use crate::editor::EditorState;
 
-const BG: Color = Color::Rgb(18, 18, 18);
-const DIM: Color = Color::Rgb(90, 90, 90);
-const KEY_FG: Color = Color::Rgb(176, 196, 200);
 
 /// Search bar rendered in the hints area during Search mode.
 pub struct SearchBar<'a> {
@@ -20,9 +17,16 @@ impl<'a> Widget for SearchBar<'a> {
         if area.height == 0 {
             return;
         }
+        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
+        let bg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.accent_rgb();
+        let key_fg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim_fg = Color::Rgb(r, g, b);
+
         let y = area.top();
         for x in area.left()..area.right() {
-            buf[(x, y)].set_bg(BG).set_char(' ');
+            buf[(x, y)].set_bg(bg).set_fg(dim_fg).set_char(' ');
         }
 
         let total = self.state.search_results.len();
@@ -40,10 +44,10 @@ impl<'a> Widget for SearchBar<'a> {
         };
 
         let accent_style = Style::default()
-            .fg(KEY_FG)
-            .bg(BG)
+            .fg(key_fg)
+            .bg(bg)
             .add_modifier(Modifier::BOLD);
-        let dim_style = Style::default().fg(DIM).bg(BG);
+        let dim_style = Style::default().fg(dim_fg).bg(bg);
 
         let mut x = area.left();
         let max_x = area.right();

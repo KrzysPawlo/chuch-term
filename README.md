@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.0-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.1-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -161,7 +161,7 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 - **Mouse support** — click anywhere to reposition the cursor
 - **Indent guides** — optional `│` markers at every indentation level
 - **Indentation error hints** — leading whitespace highlighted red when indentation is inconsistent (YAML, Python, Proto3)
-- **Settings overlay** — Ctrl+, opens a live settings panel; changes are saved to config.toml on close
+- **Settings overlay** — `Alt+,` (`Option+,` on macOS) opens a live settings panel; changes are saved to config.toml on close
 - **Config file** — `~/.config/chuch-term/config.toml`, hot-reloaded within 2s
 - **Single binary** — no runtime, no dependencies, copy the binary and go
 - **Atomic saves** — tmp→rename pattern, no data loss on crash
@@ -216,7 +216,53 @@ Removes the binary and `~/.config/chuch-term/`. Nothing else was ever installed.
 - `Ctrl+O` go back to previous file
 - `Ctrl+L` toggle line numbers
 - `Ctrl+P` command palette
+- `Alt+,` (`Option+,` on macOS) settings overlay
 - `Ctrl+H` help overlay
+
+---
+
+## Requirements
+
+### Terminal — true-color support
+
+chuch-term uses 24-bit RGB colours. On terminals without true-color support the UI
+may render with incorrect colours (e.g. magenta bottom bar, washed-out text).
+
+**Recommended terminals:**
+- macOS: [iTerm2](https://iterm2.com), Ghostty, or WezTerm
+- Linux: kitty, alacritty, WezTerm, or any terminal with `COLORTERM=truecolor`
+
+**Verify and fix:**
+
+```bash
+# Check whether true-color is announced:
+echo $COLORTERM          # should print: truecolor
+
+# Full diagnostics:
+chuch-term --debug-env
+
+# If COLORTERM is not set, add to your shell profile (~/.zshrc / ~/.bashrc):
+export COLORTERM=truecolor
+```
+
+### macOS — Command Line Tools
+
+Requires Apple CLT (clang ≥ 15). Install or update:
+
+```bash
+# Fresh install:
+xcode-select --install
+
+# Check installed version:
+pkgutil --pkg-info=com.apple.pkg.CLTools_Executables | grep version
+
+# Update to a specific version (recommended — faster than reinstalling):
+sudo softwareupdate --install "Command Line Tools for Xcode-16.4"
+
+# Or full reinstall:
+sudo rm -rf /Library/Developer/CommandLineTools
+xcode-select --install
+```
 
 ---
 
@@ -241,11 +287,22 @@ indent_errors = false     # Highlight inconsistent indentation in red (YAML, Pyt
 # "internal" = never use system clipboard (session only)
 # "osc52" = force OSC-52 escape sequences (best for SSH)
 strategy = "auto"
+
+[theme]
+# Hex colour strings — edit and save; the editor picks up changes within 2 seconds.
+# Main accent colour: keybinding hints, highlights, selected items, active line number.
+accent  = "#b0c4c8"
+# Warning / confirmation colour: confirm-quit bar, command palette key column.
+warning = "#ff9944"
+# Dim text colour: descriptions, secondary UI text, inactive line numbers.
+dim     = "#5a5a5a"
+# Status and hints bar background colour.
+bg_bar  = "#121212"
 ```
 
-Open with `Ctrl+P → Open Config` or `Ctrl+,` (Settings overlay). The overlay saves
-changes to `config.toml` on close. Config file changes are picked up within 2 seconds — no restart needed.
-Legacy keys such as `[theme]` are tolerated but ignored.
+Open with `Ctrl+P → Open Config` or `Alt+,` (`Option+,` on macOS — Settings overlay).
+The overlay saves changes to `config.toml` on close. Config file changes (including
+`[theme]`) are hot-reloaded within 2 seconds — no restart needed.
 
 ---
 

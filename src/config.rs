@@ -20,6 +20,17 @@ indent_errors = false
 [clipboard]
 # "auto" = detect system clipboard, "internal" = never use system clipboard, "osc52" = force OSC-52
 strategy = "auto"
+
+[theme]
+# Hex colour strings — change any value and save; the editor picks it up within 2 seconds.
+# Main accent colour: keybinding hints, selected items, highlights, active line number.
+accent  = "#b0c4c8"
+# Warning / confirmation colour: confirm-quit bar, command palette key column.
+warning = "#ff9944"
+# Dim text colour: descriptions, secondary UI text, inactive line numbers.
+dim     = "#5a5a5a"
+# Status and hints bar background colour.
+bg_bar  = "#121212"
 "##;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +76,65 @@ fn default_true() -> bool { true }
 fn default_tab_width() -> u8 { 4 }
 fn default_indent_error_bg() -> [u8; 3] { [70, 20, 20] }
 
+// ── Theme ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeSection {
+    /// Main accent colour: keybinding hints, selected items, highlights.
+    #[serde(default = "default_accent")]
+    pub accent: String,
+    /// Warning / confirmation colour: confirm-quit bar, command palette key column.
+    #[serde(default = "default_warning")]
+    pub warning: String,
+    /// Dim text colour: descriptions and secondary UI elements.
+    #[serde(default = "default_dim")]
+    pub dim: String,
+    /// Status and hints bar background colour.
+    #[serde(default = "default_bg_bar")]
+    pub bg_bar: String,
+}
+
+fn default_accent()  -> String { "#b0c4c8".into() }
+fn default_warning() -> String { "#ff9944".into() }
+fn default_dim()     -> String { "#5a5a5a".into() }
+fn default_bg_bar()  -> String { "#121212".into() }
+
+impl Default for ThemeSection {
+    fn default() -> Self {
+        Self {
+            accent:  default_accent(),
+            warning: default_warning(),
+            dim:     default_dim(),
+            bg_bar:  default_bg_bar(),
+        }
+    }
+}
+
+impl ThemeSection {
+    pub fn accent_rgb(&self)  -> (u8, u8, u8) { parse_hex_rgb(&self.accent,  176, 196, 200) }
+    pub fn warning_rgb(&self) -> (u8, u8, u8) { parse_hex_rgb(&self.warning, 255, 153,  68) }
+    pub fn dim_rgb(&self)     -> (u8, u8, u8) { parse_hex_rgb(&self.dim,      90,  90,  90) }
+    pub fn bg_bar_rgb(&self)  -> (u8, u8, u8) { parse_hex_rgb(&self.bg_bar,   18,  18,  18) }
+}
+
+/// Parse a hex colour string (`"#rrggbb"` or `"rrggbb"`) to an RGB tuple.
+/// Falls back to the provided defaults when the string is malformed.
+fn parse_hex_rgb(s: &str, r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+    let s = s.trim().trim_start_matches('#');
+    if s.len() == 6 {
+        if let (Ok(rv), Ok(gv), Ok(bv)) = (
+            u8::from_str_radix(&s[0..2], 16),
+            u8::from_str_radix(&s[2..4], 16),
+            u8::from_str_radix(&s[4..6], 16),
+        ) {
+            return (rv, gv, bv);
+        }
+    }
+    (r, g, b)
+}
+
+// ── Clipboard ─────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardSection {
     pub strategy: String,
@@ -84,6 +154,8 @@ pub struct EditorConfig {
     pub editor: EditorSection,
     #[serde(default)]
     pub clipboard: ClipboardSection,
+    #[serde(default)]
+    pub theme: ThemeSection,
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -226,8 +298,9 @@ mod tests {
         );
 
         let content = std::fs::read_to_string(&path).expect("config should exist");
-        assert!(content.contains("tab_width"));    // now a valid field in DEFAULT_CONFIG_CONTENT
-        assert!(!content.contains("[theme]"));
+        assert!(content.contains("tab_width"));    // valid field in DEFAULT_CONFIG_CONTENT
+        assert!(content.contains("[theme]"));      // theme section is now present
+        assert!(content.contains("accent"));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -277,6 +350,8 @@ strategy = "internal"
         assert!(config.editor.relative_numbers);
         assert!(!config.editor.syntax_highlight);
         assert_eq!(config.clipboard.strategy, "internal");
+        // Theme values from the legacy config are now loaded correctly.
+        assert_eq!(config.theme.accent, "#ffffff");
 
         let _ = std::fs::remove_dir_all(root);
     }

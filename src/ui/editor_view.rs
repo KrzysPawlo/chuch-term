@@ -10,14 +10,16 @@ use crate::editor::EditorState;
 use crate::syntax::TokenKind;
 
 // ── Design tokens ──────────────────────────────────────────────────────
+// Explicit editor background — never use Color::Reset so that cells without
+// text don't bleed through to the terminal's own background colour (which can
+// produce magenta/pink artifacts on non-default terminal themes).
+const EDITOR_BG: Color = Color::Rgb(18, 18, 18);    // #121212
 const TILDE_COLOR: Color = Color::Rgb(60, 60, 60);
 const INDENT_GUIDE: Color = Color::Rgb(45, 45, 45); // very dim guide line
 
 const TEXT_MAIN: Color = Color::Rgb(220, 220, 220); // #dcdcdc
 
-// Welcome screen tokens (Interstellar Minimalism V1)
-const WELCOME_NAME_FG: Color = Color::Rgb(176, 196, 200);
-const WELCOME_KEY_FG: Color = Color::Rgb(255, 153, 68);
+// Welcome screen tokens (hardcoded non-themed values)
 const WELCOME_DESC_FG: Color = Color::Rgb(70, 70, 70);
 const WELCOME_SEP_FG: Color = Color::Rgb(38, 38, 38);
 
@@ -30,8 +32,7 @@ const COLOR_TYPE: Color = Color::Rgb(130, 170, 255);      // #82aaff blue
 const COLOR_ATTRIBUTE: Color = Color::Rgb(255, 203, 107); // #ffcb6b yellow
 
 // Search match colors
-const SEARCH_MATCH_BG: Color = Color::Rgb(60, 60, 30);     // dim yellow bg
-const SEARCH_CURRENT_BG: Color = Color::Rgb(176, 196, 200); // accent — current match
+const SEARCH_MATCH_BG: Color = Color::Rgb(60, 60, 30);  // dim yellow bg
 const SEARCH_CURRENT_FG: Color = Color::Rgb(10, 10, 10);
 
 // Selection color
@@ -76,7 +77,7 @@ impl<'a> Widget for EditorView<'a> {
         }
 
         if self.state.is_welcome_state() {
-            render_welcome(area, buf);
+            render_welcome(self.state, area, buf);
             return;
         }
 
@@ -92,6 +93,8 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
     let width = area.width as usize;
     let lang = state.language();
     let syntax_enabled = state.config.editor.syntax_highlight;
+    let (r, g, b) = state.config.theme.accent_rgb();
+    let search_current_bg = Color::Rgb(r, g, b);
 
     // Pre-compute selection range
     let sel_range = state.selection_range();
@@ -145,7 +148,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
 
                 // Determine base style from syntax
                 let mut fg = TEXT_MAIN;
-                let mut bg = Color::Reset;
+                let mut bg = EDITOR_BG;
                 let mods = Modifier::empty();
 
                 if syntax_enabled {
@@ -179,7 +182,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                             && byte_pos < found.end
                         {
                             if match_idx == state.search_result_idx {
-                                bg = SEARCH_CURRENT_BG;
+                                bg = search_current_bg;
                                 fg = SEARCH_CURRENT_FG;
                             } else {
                                 bg = SEARCH_MATCH_BG;
@@ -212,18 +215,19 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                 byte_pos += ch.len_utf8();
             }
 
-            // Clear remainder of line
+            // Clear remainder of line with explicit background to avoid ghost
+            // selection artifacts when text is deleted or selection is cleared.
             while x < area.right() {
-                buf[(x, y)].set_char(' ').set_style(Style::default());
+                buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG));
                 x += 1;
             }
         } else {
             buf[(area.left(), y)]
                 .set_char('~')
-                .set_style(Style::default().fg(TILDE_COLOR));
+                .set_style(Style::default().fg(TILDE_COLOR).bg(EDITOR_BG));
             let mut x = area.left() + 1;
             while x < area.right() {
-                buf[(x, y)].set_char(' ').set_style(Style::default());
+                buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG));
                 x += 1;
             }
         }
@@ -256,16 +260,21 @@ fn is_in_selection(
 
 // ── Welcome screen ─────────────────────────────────────────────────────
 
-fn render_welcome(area: Rect, buf: &mut Buffer) {
+fn render_welcome(state: &EditorState, area: Rect, buf: &mut Buffer) {
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
-            buf[(x, y)].set_char(' ').set_style(Style::default());
+            buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG).fg(EDITOR_BG));
         }
     }
 
     if area.height < 6 || area.width < 20 {
         return;
     }
+
+    let (r, g, b) = state.config.theme.accent_rgb();
+    let welcome_name_fg = Color::Rgb(r, g, b);
+    let (r, g, b) = state.config.theme.warning_rgb();
+    let welcome_key_fg = Color::Rgb(r, g, b);
 
     let block_height: u16 = 4;
     let center_y = area.top() + area.height / 2;
@@ -280,7 +289,7 @@ fn render_welcome(area: Rect, buf: &mut Buffer) {
     ];
 
     let name_style = Style::default()
-        .fg(WELCOME_NAME_FG)
+        .fg(welcome_name_fg)
         .add_modifier(Modifier::BOLD);
     render_centered(buf, start_y, area, name_line, name_style);
 
@@ -297,7 +306,7 @@ fn render_welcome(area: Rect, buf: &mut Buffer) {
         let mut x = start_x;
         let max_x = area.right();
 
-        let key_style = Style::default().fg(WELCOME_KEY_FG);
+        let key_style = Style::default().fg(welcome_key_fg);
         let desc_style = Style::default().fg(WELCOME_DESC_FG);
         let sep_style = Style::default().fg(WELCOME_SEP_FG);
 

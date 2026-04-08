@@ -9,12 +9,9 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::editor::{EditorMode, EditorState};
 use crate::syntax::Language;
 
-const BG: Color = Color::Rgb(26, 26, 26);
-const TEXT_DIM: Color = Color::Rgb(136, 136, 136);
+// Hardcoded (non-themed) design tokens.
 const TEXT_MAIN: Color = Color::Rgb(220, 220, 220);
-const ACCENT: Color = Color::Rgb(176, 196, 200);
-const WARN: Color = Color::Rgb(255, 153, 68);
-const LANG_FG: Color = Color::Rgb(130, 170, 150);
+const LANG_FG:   Color = Color::Rgb(130, 170, 150);  // muted teal — language label
 
 pub struct StatusBar<'a> {
     pub state: &'a EditorState,
@@ -26,13 +23,21 @@ impl<'a> Widget for StatusBar<'a> {
             return;
         }
 
+        // Resolve theme colours.
+        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
+        let bg = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.dim_rgb();
+        let dim = Color::Rgb(r, g, b);
+        let (r, g, b) = self.state.config.theme.warning_rgb();
+        let warning = Color::Rgb(r, g, b);
+
         for x in area.left()..area.right() {
-            buf[(x, area.top())].set_bg(BG).set_char(' ');
+            buf[(x, area.top())].set_style(Style::default().bg(bg).fg(dim)).set_char(' ');
         }
 
         match self.state.mode {
-            EditorMode::ConfirmQuit => render_confirm_quit(area, buf),
-            _ => render_normal(self.state, area, buf),
+            EditorMode::ConfirmQuit => render_confirm_quit(area, buf, warning, bg),
+            _ => render_normal(self.state, area, buf, bg, dim),
         }
     }
 }
@@ -52,12 +57,15 @@ fn language_name(lang: Language) -> Option<&'static str> {
     }
 }
 
-fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer) {
+fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer, bg: Color, dim: Color) {
     let y = area.top();
     let width = area.width;
     if width == 0 {
         return;
     }
+
+    let (r, g, b) = state.config.theme.accent_rgb();
+    let accent = Color::Rgb(r, g, b);
 
     let left_text = format!(
         " {}{}",
@@ -65,8 +73,6 @@ fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer) {
         if state.buffer.dirty { " [+]" } else { "" }
     );
 
-    // ── Right-side: build segments for width calculation then render ──────
-    // Each segment is (text, Style).
     let row_num = (state.cursor.row + 1).to_string();
     let col_num = (state.cursor.col + 1).to_string();
 
@@ -78,10 +84,9 @@ fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer) {
         let msg = truncate_to_width(message, width as usize);
         right_width = msg.width();
         right_x = area.right().saturating_sub(right_width as u16);
-        let _ = write_text(buf, right_x, y, &msg, Style::default().fg(TEXT_DIM).bg(BG), area.right());
-        // Also render left side and return.
+        let _ = write_text(buf, right_x, y, &msg, Style::default().fg(dim).bg(bg), area.right());
         let left_budget = width.saturating_sub(right_width as u16 + 1);
-        render_left(buf, &left_text, y, area.left(), left_budget);
+        render_left(buf, &left_text, y, area.left(), left_budget, accent, bg);
         return;
     }
 
@@ -89,41 +94,40 @@ fn render_normal(state: &EditorState, area: Rect, buf: &mut Buffer) {
     let lang_prefix = language_name(state.language())
         .map(|l| format!("{l}   "))
         .unwrap_or_default();
-    // Full right string for width: "{lang}   Ln {row}  Col {col} "
     let right_full = format!("{lang_prefix}Ln {row_num}  Col {col_num} ");
     right_width = right_full.width();
     right_x = area.right().saturating_sub(right_width as u16);
 
     let mut x = right_x;
     if !lang_prefix.is_empty() {
-        x = write_text(buf, x, y, &lang_prefix, Style::default().fg(LANG_FG).bg(BG), area.right());
+        x = write_text(buf, x, y, &lang_prefix, Style::default().fg(LANG_FG).bg(bg), area.right());
     }
-    x = write_text(buf, x, y, "Ln ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
-    x = write_text(buf, x, y, &row_num, Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD), area.right());
-    x = write_text(buf, x, y, "  Col ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
-    x = write_text(buf, x, y, &col_num, Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD), area.right());
-    let _ = write_text(buf, x, y, " ", Style::default().fg(TEXT_DIM).bg(BG), area.right());
+    x = write_text(buf, x, y, "Ln ",     Style::default().fg(dim).bg(bg), area.right());
+    x = write_text(buf, x, y, &row_num,  Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD), area.right());
+    x = write_text(buf, x, y, "  Col ",  Style::default().fg(dim).bg(bg), area.right());
+    x = write_text(buf, x, y, &col_num,  Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD), area.right());
+    let _ = write_text(buf, x, y, " ", Style::default().fg(dim).bg(bg), area.right());
 
     let left_budget = width.saturating_sub(right_width as u16 + 1);
-    render_left(buf, &left_text, y, area.left(), left_budget);
+    render_left(buf, &left_text, y, area.left(), left_budget, accent, bg);
 }
 
-fn render_left(buf: &mut Buffer, text: &str, y: u16, start_x: u16, budget: u16) {
+fn render_left(buf: &mut Buffer, text: &str, y: u16, start_x: u16, budget: u16, accent: Color, bg: Color) {
     let display = truncate_to_width(text, budget as usize);
     let has_dirty = display.contains("[+]");
     let mut x = start_x;
     for ch in display.chars() {
         let style = if has_dirty && matches!(ch, '[' | '+' | ']') {
-            Style::default().fg(ACCENT).bg(BG).add_modifier(Modifier::BOLD)
+            Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(TEXT_MAIN).bg(BG)
+            Style::default().fg(TEXT_MAIN).bg(bg)
         };
         buf[(x, y)].set_char(ch).set_style(style);
         x += UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
     }
 }
 
-fn render_confirm_quit(area: Rect, buf: &mut Buffer) {
+fn render_confirm_quit(area: Rect, buf: &mut Buffer, warning: Color, bg: Color) {
     let message =
         " Unsaved changes. Ctrl+Q force quit  ·  Ctrl+S save & quit  ·  Esc cancel ";
     let _ = write_text(
@@ -131,7 +135,7 @@ fn render_confirm_quit(area: Rect, buf: &mut Buffer) {
         area.left(),
         area.top(),
         &truncate_to_width(message, area.width as usize),
-        Style::default().fg(WARN).bg(BG).add_modifier(Modifier::BOLD),
+        Style::default().fg(warning).bg(bg).add_modifier(Modifier::BOLD),
         area.right(),
     );
 }
