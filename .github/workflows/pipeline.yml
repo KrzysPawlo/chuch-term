@@ -93,17 +93,18 @@ jobs:
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
+          # Checksum on the binary — Safari-proof.
+          # Archive decompression by browsers doesn't affect verification.
+          shasum -a 256 chuch-term > ../../../chuch-term-${{ matrix.asset }}.sha256
           tar czf chuch-term-${{ matrix.asset }}.tar.gz chuch-term
           mv chuch-term-${{ matrix.asset }}.tar.gz ../../../
-          cd ../../..
-          shasum -a 256 chuch-term-${{ matrix.asset }}.tar.gz > chuch-term-${{ matrix.asset }}.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: chuch-term-${{ matrix.asset }}
           path: |
             chuch-term-${{ matrix.asset }}.tar.gz
-            chuch-term-${{ matrix.asset }}.tar.gz.sha256
+            chuch-term-${{ matrix.asset }}.sha256
 
   release:
     name: Release
@@ -129,29 +130,29 @@ jobs:
           body: |
             ## Install
 
+            Download the `.tar.gz` and the matching `.sha256` file, then:
+
             **macOS Apple Silicon:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-arm.tar.gz -o chuch-term-macos-arm.tar.gz
-            shasum -a 256 -c chuch-term-macos-arm.tar.gz.sha256
-            tar xzf chuch-term-macos-arm.tar.gz
+            # Safari auto-decompresses .gz — use tar xf (not tar xzf)
+            tar xf chuch-term-macos-arm.tar
+            shasum -a 256 -c chuch-term-macos-arm.sha256
             sudo mv chuch-term /usr/local/bin/
             xattr -d com.apple.quarantine /usr/local/bin/chuch-term
             ```
 
             **macOS Intel:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-macos-intel.tar.gz -o chuch-term-macos-intel.tar.gz
-            shasum -a 256 -c chuch-term-macos-intel.tar.gz.sha256
-            tar xzf chuch-term-macos-intel.tar.gz
+            tar xf chuch-term-macos-intel.tar
+            shasum -a 256 -c chuch-term-macos-intel.sha256
             sudo mv chuch-term /usr/local/bin/
             xattr -d com.apple.quarantine /usr/local/bin/chuch-term
             ```
 
             **Linux x86_64:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chuch-term-linux-x86_64.tar.gz -o chuch-term-linux-x86_64.tar.gz
-            sha256sum -c chuch-term-linux-x86_64.tar.gz.sha256
             tar xzf chuch-term-linux-x86_64.tar.gz
+            shasum -a 256 -c chuch-term-linux-x86_64.sha256
             sudo mv chuch-term /usr/local/bin/
             ```
 
@@ -159,3 +160,6 @@ jobs:
             ```bash
             cargo install --git https://github.com/${{ github.repository }}
             ```
+
+            > The `.sha256` checksum is computed on the **binary**, not the archive —
+            > verification works regardless of how your browser handles the download.

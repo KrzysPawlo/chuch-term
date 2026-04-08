@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.5.6-b0c4c8)
+![version](https://img.shields.io/badge/version-0.5.7-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -44,13 +44,15 @@ Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/release
 | macOS Intel | `chuch-term-macos-intel.tar.gz` |
 | Linux x86_64 (static) | `chuch-term-linux-x86_64.tar.gz` |
 
+Download the `.tar.gz` **and** the matching `.sha256` from the same release, then:
+
 ```bash
-# 1. Download and extract
-#    Safari auto-unpacks .gz and saves a plain .tar — use tar xf (not tar xzf)
+# 1. Extract
+#    Safari auto-decompresses .gz — use tar xf regardless
 tar xf chuch-term-macos-arm.tar        # adjust filename for your platform
 
-# 2. Verify checksum (download the matching .sha256 file from the same release)
-shasum -a 256 -c chuch-term-macos-arm.tar.gz.sha256
+# 2. Verify binary checksum (checksum is on the binary, not the archive — Safari-proof)
+shasum -a 256 -c chuch-term-macos-arm.sha256
 
 # 3. Move to PATH
 sudo mv chuch-term /usr/local/bin/
@@ -110,7 +112,8 @@ Nothing else — no background services, no shell hooks, no system-level changes
 Download the new release from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest), then run the same steps as installation:
 
 ```bash
-tar xf chuch-term-macos-arm.tar          # adjust for your platform
+tar xf chuch-term-macos-arm.tar                        # adjust for your platform
+shasum -a 256 -c chuch-term-macos-arm.sha256           # verify binary
 sudo mv chuch-term /usr/local/bin/
 xattr -d com.apple.quarantine /usr/local/bin/chuch-term
 chuch-term --version

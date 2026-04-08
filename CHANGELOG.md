@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-04-08
+
+### Fixed
+- SHA256 checksum is now computed on the **binary**, not the archive — verification works correctly when Safari auto-decompresses `.tar.gz` to `.tar`
+- Release assets renamed: `*.tar.gz.sha256` → `*.sha256`
+- README and SECURITY.md install instructions updated to reflect Safari behavior
+
 ## [0.5.6] - 2026-04-08
 
 ### Changed
