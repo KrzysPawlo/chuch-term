@@ -7,6 +7,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-04-08
+
+### Fixed
+- **Cross-device color reliability** — rendering no longer trusts `COLORTERM=truecolor` by itself; `chuch-term` now resolves an effective color backend before drawing any UI
+- **Apple Terminal compatibility** — in the default `auto` mode, Apple Terminal now uses an ANSI-256 fallback palette instead of full RGB, preventing the magenta / washed-out color failures reproduced on older macOS + Terminal.app combinations
+- **Color diagnostics truthfulness** — `chuch-term --debug-env` now separates declared signals from the effective render mode and explains why the mode was chosen
+- **UI color consistency** — editor, overlays, command palette, line numbers, search/replace bars, status bar, and hints bar now render through one resolved palette instead of mixing ad-hoc RGB construction
+
+### Added
+- **`[render]` config section** with `color_mode = "auto" | "rgb" | "ansi256"`
+- **ANSI-256 compatibility palette** — user theme colors and built-in design tokens are quantized through the same palette layer when RGB is not trusted
+- Regression tests for:
+  - terminal capability resolution
+  - RGB vs ANSI-256 palette mapping
+  - `--debug-env` effective-mode reporting
+
+### Changed
+- **Default color policy** — `auto` is now the recommended and default mode; `rgb` is an expert override for terminals that truly render 24-bit color correctly
+- **README / install / architecture / release docs** now explain the difference between announced terminal capabilities and the render mode actually selected by `chuch-term`
+
 ## [0.6.2] - 2026-04-08
 
 ### Fixed

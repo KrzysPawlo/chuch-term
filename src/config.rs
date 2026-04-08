@@ -24,6 +24,10 @@ indent_errors = false
 # "auto" = detect system clipboard, "internal" = never use system clipboard, "osc52" = force OSC-52
 strategy = "auto"
 
+[render]
+# "auto" = stable default, "rgb" = force 24-bit colours, "ansi256" = force 256-colour fallback
+color_mode = "auto"
+
 [theme]
 # Hex colour strings — change any value and save; the editor picks it up within 2 seconds.
 # Main accent colour: keybinding hints, selected items, highlights, active line number.
@@ -80,6 +84,22 @@ fn default_tab_width() -> u8 { 4 }
 fn default_indent_error_bg() -> [u8; 3] { [70, 20, 20] }
 
 // ── Theme ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenderSection {
+    #[serde(default = "default_color_mode")]
+    pub color_mode: String,
+}
+
+impl Default for RenderSection {
+    fn default() -> Self {
+        Self {
+            color_mode: default_color_mode(),
+        }
+    }
+}
+
+fn default_color_mode() -> String { "auto".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeSection {
@@ -157,6 +177,8 @@ pub struct EditorConfig {
     pub editor: EditorSection,
     #[serde(default)]
     pub clipboard: ClipboardSection,
+    #[serde(default)]
+    pub render: RenderSection,
     #[serde(default)]
     pub theme: ThemeSection,
 }
@@ -278,19 +300,29 @@ pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
 }
 
 fn validate_config(mut cfg: EditorConfig) -> (EditorConfig, Option<String>) {
+    let mut warnings = Vec::new();
     const VALID_STRATEGIES: &[&str] = &["auto", "internal", "osc52"];
     if !VALID_STRATEGIES.contains(&cfg.clipboard.strategy.as_str()) {
         let bad = std::mem::replace(&mut cfg.clipboard.strategy, "auto".to_string());
-        return (
-            cfg,
-            Some(format!(
-                "Config: unknown clipboard.strategy {bad:?}, using \"auto\""
-            )),
-        );
+        warnings.push(format!(
+            "Config: unknown clipboard.strategy {bad:?}, using \"auto\""
+        ));
+    }
+    const VALID_COLOR_MODES: &[&str] = &["auto", "rgb", "ansi256"];
+    if !VALID_COLOR_MODES.contains(&cfg.render.color_mode.as_str()) {
+        let bad = std::mem::replace(&mut cfg.render.color_mode, "auto".to_string());
+        warnings.push(format!(
+            "Config: unknown render.color_mode {bad:?}, using \"auto\""
+        ));
     }
     // Clamp tab_width to a sensible range.
     cfg.editor.tab_width = cfg.editor.tab_width.clamp(1, 8);
-    (cfg, None)
+    let warning = if warnings.is_empty() {
+        None
+    } else {
+        Some(warnings.join("; "))
+    };
+    (cfg, warning)
 }
 
 fn create_default_config(path: &Path) -> std::io::Result<bool> {
@@ -337,6 +369,8 @@ mod tests {
 
         let content = std::fs::read_to_string(&path).expect("config should exist");
         assert!(content.contains("tab_width"));    // valid field in DEFAULT_CONFIG_CONTENT
+        assert!(content.contains("[render]"));
+        assert!(content.contains("color_mode = \"auto\""));
         assert!(content.contains("[theme]"));      // theme section is now present
         assert!(content.contains("accent"));
 
@@ -402,6 +436,7 @@ strategy = "internal"
         assert!(config.editor.relative_numbers);
         assert!(!config.editor.syntax_highlight);
         assert_eq!(config.clipboard.strategy, "internal");
+        assert_eq!(config.render.color_mode, "auto");
         // Theme values from the legacy config are now loaded correctly.
         assert_eq!(config.theme.accent, "#ffffff");
 
@@ -438,6 +473,31 @@ strategy = "internal"
 
         assert_eq!(theme.bg_bar_rgb(), (18, 18, 18));
         assert_eq!(theme.accent_rgb(), (176, 196, 200));
+    }
+
+    #[test]
+    fn invalid_render_mode_falls_back_to_auto() {
+        let root = temp_path("render-mode");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        let path = root.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[render]
+color_mode = "neon"
+"#,
+        )
+        .expect("render config write");
+
+        let (config, warning) = load_config_from_path(&path);
+
+        assert_eq!(config.render.color_mode, "auto");
+        assert_eq!(
+            warning.as_deref(),
+            Some("Config: unknown render.color_mode \"neon\", using \"auto\"")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

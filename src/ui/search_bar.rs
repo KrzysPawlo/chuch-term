@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::Widget,
 };
 use crate::editor::EditorState;
@@ -17,12 +17,9 @@ impl<'a> Widget for SearchBar<'a> {
         if area.height == 0 {
             return;
         }
-        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
-        let bg = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.accent_rgb();
-        let key_fg = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.dim_rgb();
-        let dim_fg = Color::Rgb(r, g, b);
+        let bg = self.state.palette.theme_bg_bar;
+        let key_fg = self.state.palette.theme_accent;
+        let dim_fg = self.state.palette.theme_dim;
 
         let y = area.top();
         for x in area.left()..area.right() {
@@ -73,12 +70,16 @@ impl<'a> Widget for SearchBar<'a> {
 mod tests {
     use super::*;
     use crate::editor::{EditorMode, EditorState};
+    use ratatui::style::Color;
 
     #[test]
     fn search_bar_uses_theme_bg_bar() {
         let mut state = EditorState::new_empty();
         state.mode = EditorMode::Search;
+        state.config.render.color_mode = "rgb".to_string();
         state.config.theme.bg_bar = "#334455".to_string();
+        let config = state.config.clone();
+        state.apply_config(config);
 
         let area = Rect::new(0, 0, 18, 1);
         let mut buf = Buffer::empty(area);

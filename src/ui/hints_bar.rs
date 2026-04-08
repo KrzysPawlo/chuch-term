@@ -6,10 +6,6 @@ use ratatui::{
 };
 use crate::editor::{EditorMode, EditorState};
 
-// ── Hardcoded (non-themed) design tokens ───────────────────────────────
-const SEP_FG:   Color = Color::Rgb(45, 45, 45);    // #2d2d2d  separator ·
-const WARN_SEP: Color = Color::Rgb(100, 60, 20);   // dim amber separator
-
 /// One-row contextual hints bar rendered below the status bar.
 pub struct HintsBar<'a> {
     pub state: &'a EditorState,
@@ -23,14 +19,10 @@ impl<'a> Widget for HintsBar<'a> {
         let y = area.top();
 
         // Resolve theme colours from config.
-        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
-        let bg = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.accent_rgb();
-        let accent = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.dim_rgb();
-        let dim = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.warning_rgb();
-        let warning = Color::Rgb(r, g, b);
+        let bg = self.state.palette.theme_bg_bar;
+        let accent = self.state.palette.theme_accent;
+        let dim = self.state.palette.theme_dim;
+        let warning = self.state.palette.theme_warning;
 
         // Fill background — set both fg and bg explicitly to prevent style leaks
         // across ratatui frames (set_bg alone leaves fg from the previous frame).
@@ -41,12 +33,22 @@ impl<'a> Widget for HintsBar<'a> {
         match self.state.mode {
             EditorMode::Normal => {
                 if self.state.selection_anchor.is_some() {
-                    render_selection_hints(area, buf, accent, dim, bg);
+                    render_selection_hints(area, buf, accent, dim, bg, self.state.palette.hints_sep_fg);
                 } else {
-                    render_normal(area, buf, self.state.previous_buffer.is_some(), accent, dim, bg);
+                    render_normal(
+                        area,
+                        buf,
+                        self.state.previous_buffer.is_some(),
+                        accent,
+                        dim,
+                        bg,
+                        self.state.palette.hints_sep_fg,
+                    );
                 }
             }
-            EditorMode::ConfirmQuit => render_confirm(area, buf, warning, bg),
+            EditorMode::ConfirmQuit => {
+                render_confirm(area, buf, warning, bg, self.state.palette.hints_warn_sep_fg)
+            }
             EditorMode::Help => render_help(area, buf, dim, bg),
             EditorMode::Search | EditorMode::GoToLine => {
                 // These modes render their own bar widget (search_bar / goto_bar).
@@ -98,10 +100,18 @@ fn render_hints(
     }
 }
 
-fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool, accent: Color, dim: Color, bg: Color) {
+fn render_normal(
+    area: Rect,
+    buf: &mut Buffer,
+    has_prev: bool,
+    accent: Color,
+    dim: Color,
+    bg: Color,
+    sep_fg: Color,
+) {
     let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(dim).bg(bg);
-    let sep_style  = Style::default().fg(SEP_FG).bg(bg);
+    let sep_style  = Style::default().fg(sep_fg).bg(bg);
 
     if has_prev {
         render_hints(
@@ -131,10 +141,17 @@ fn render_normal(area: Rect, buf: &mut Buffer, has_prev: bool, accent: Color, di
     }
 }
 
-fn render_selection_hints(area: Rect, buf: &mut Buffer, accent: Color, dim: Color, bg: Color) {
+fn render_selection_hints(
+    area: Rect,
+    buf: &mut Buffer,
+    accent: Color,
+    dim: Color,
+    bg: Color,
+    sep_fg: Color,
+) {
     let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(dim).bg(bg);
-    let sep_style  = Style::default().fg(SEP_FG).bg(bg);
+    let sep_style  = Style::default().fg(sep_fg).bg(bg);
 
     render_hints(
         area, buf,
@@ -148,10 +165,10 @@ fn render_selection_hints(area: Rect, buf: &mut Buffer, accent: Color, dim: Colo
     );
 }
 
-fn render_confirm(area: Rect, buf: &mut Buffer, warning: Color, bg: Color) {
+fn render_confirm(area: Rect, buf: &mut Buffer, warning: Color, bg: Color, sep_fg: Color) {
     let key_style  = Style::default().fg(warning).bg(bg).add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(warning).bg(bg);
-    let sep_style  = Style::default().fg(WARN_SEP).bg(bg);
+    let sep_style  = Style::default().fg(sep_fg).bg(bg);
 
     render_hints(
         area, buf,
@@ -182,7 +199,10 @@ mod tests {
     #[test]
     fn hints_bar_uses_theme_bg_bar() {
         let mut state = EditorState::new_empty();
+        state.config.render.color_mode = "rgb".to_string();
         state.config.theme.bg_bar = "#224466".to_string();
+        let config = state.config.clone();
+        state.apply_config(config);
 
         let area = Rect::new(0, 0, 16, 1);
         let mut buf = Buffer::empty(area);

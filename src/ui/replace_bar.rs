@@ -1,12 +1,10 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::Widget,
 };
 use crate::editor::EditorState;
-
-const SEP: Color = Color::Rgb(45, 45, 45);
 
 fn put(buf: &mut Buffer, x: u16, y: u16, text: &str, style: Style, max_x: u16) -> u16 {
     let mut cx = x;
@@ -25,14 +23,10 @@ pub struct ReplaceBar<'a> {
 impl<'a> Widget for ReplaceBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 { return; }
-        let (r, g, b) = self.state.config.theme.bg_bar_rgb();
-        let bg = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.accent_rgb();
-        let accent_color = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.warning_rgb();
-        let amber_color = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.dim_rgb();
-        let dim_color = Color::Rgb(r, g, b);
+        let bg = self.state.palette.theme_bg_bar;
+        let accent_color = self.state.palette.theme_accent;
+        let amber_color = self.state.palette.theme_warning;
+        let dim_color = self.state.palette.theme_dim;
 
         let y = area.top();
         for x in area.left()..area.right() {
@@ -43,7 +37,7 @@ impl<'a> Widget for ReplaceBar<'a> {
         let accent = Style::default().fg(accent_color).bg(bg);
         let amber_bold = Style::default().fg(amber_color).bg(bg).add_modifier(Modifier::BOLD);
         let dim = Style::default().fg(dim_color).bg(bg);
-        let sep = Style::default().fg(SEP).bg(bg);
+        let sep = Style::default().fg(self.state.palette.hints_sep_fg).bg(bg);
 
         let max_x = area.right();
         let mut x = area.left() + 1;
@@ -96,12 +90,16 @@ impl<'a> Widget for ReplaceBar<'a> {
 mod tests {
     use super::*;
     use crate::editor::{EditorMode, EditorState};
+    use ratatui::style::Color;
 
     #[test]
     fn replace_bar_uses_theme_bg_bar() {
         let mut state = EditorState::new_empty();
         state.mode = EditorMode::Replace;
+        state.config.render.color_mode = "rgb".to_string();
         state.config.theme.bg_bar = "#667788".to_string();
+        let config = state.config.clone();
+        state.apply_config(config);
 
         let area = Rect::new(0, 0, 18, 1);
         let mut buf = Buffer::empty(area);

@@ -9,43 +9,14 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::editor::EditorState;
 use crate::syntax::TokenKind;
 
-// ── Design tokens ──────────────────────────────────────────────────────
-// Explicit editor background — never use Color::Reset so that cells without
-// text don't bleed through to the terminal's own background colour (which can
-// produce magenta/pink artifacts on non-default terminal themes).
-const EDITOR_BG: Color = Color::Rgb(18, 18, 18);    // #121212
-const TILDE_COLOR: Color = Color::Rgb(60, 60, 60);
-const INDENT_GUIDE: Color = Color::Rgb(45, 45, 45); // very dim guide line
-
-const TEXT_MAIN: Color = Color::Rgb(220, 220, 220); // #dcdcdc
-
-// Welcome screen tokens (hardcoded non-themed values)
-const WELCOME_DESC_FG: Color = Color::Rgb(70, 70, 70);
-const WELCOME_SEP_FG: Color = Color::Rgb(38, 38, 38);
-
-// Syntax colors
-const COLOR_KEYWORD: Color = Color::Rgb(199, 146, 234);   // #c792ea soft purple
-const COLOR_STRING: Color = Color::Rgb(195, 232, 141);    // #c3e88d soft green
-const COLOR_COMMENT: Color = Color::Rgb(90, 90, 90);      // #5a5a5a dim
-const COLOR_NUMBER: Color = Color::Rgb(247, 140, 108);    // #f78c6c orange
-const COLOR_TYPE: Color = Color::Rgb(130, 170, 255);      // #82aaff blue
-const COLOR_ATTRIBUTE: Color = Color::Rgb(255, 203, 107); // #ffcb6b yellow
-
-// Search match colors
-const SEARCH_MATCH_BG: Color = Color::Rgb(60, 60, 30);  // dim yellow bg
-const SEARCH_CURRENT_FG: Color = Color::Rgb(10, 10, 10);
-
-// Selection color
-const SELECTION_BG: Color = Color::Rgb(50, 70, 90);   // muted blue selection
-
-fn token_color(kind: TokenKind) -> Color {
+fn token_color(palette: &crate::color::Palette, kind: TokenKind) -> Color {
     match kind {
-        TokenKind::Keyword => COLOR_KEYWORD,
-        TokenKind::String => COLOR_STRING,
-        TokenKind::Comment => COLOR_COMMENT,
-        TokenKind::Number => COLOR_NUMBER,
-        TokenKind::Type => COLOR_TYPE,
-        TokenKind::Attribute => COLOR_ATTRIBUTE,
+        TokenKind::Keyword => palette.syntax_keyword_fg,
+        TokenKind::String => palette.syntax_string_fg,
+        TokenKind::Comment => palette.syntax_comment_fg,
+        TokenKind::Number => palette.syntax_number_fg,
+        TokenKind::Type => palette.syntax_type_fg,
+        TokenKind::Attribute => palette.syntax_attribute_fg,
     }
 }
 
@@ -93,8 +64,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
     let width = area.width as usize;
     let lang = state.language();
     let syntax_enabled = state.config.editor.syntax_highlight;
-    let (r, g, b) = state.config.theme.accent_rgb();
-    let search_current_bg = Color::Rgb(r, g, b);
+    let search_current_bg = state.palette.theme_accent;
 
     // Pre-compute selection range
     let sel_range = state.selection_range();
@@ -128,10 +98,10 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
             let tab_width = state.config.editor.tab_width;
             let line_has_error = state.config.editor.indent_errors
                 && crate::syntax::has_indent_error(&line, tab_width, lang);
-            let error_bg_color = {
-                let [r, g, b] = state.config.editor.indent_error_bg;
-                Color::Rgb(r, g, b)
-            };
+            let error_bg_color = crate::color::resolve_config_rgb(
+                state.render_decision.effective,
+                state.config.editor.indent_error_bg,
+            );
             let guides_on = state.config.editor.indent_guides;
 
             let mut x = area.left();
@@ -147,15 +117,15 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                 let in_leading_ws = byte_pos < leading_ws_end;
 
                 // Determine base style from syntax
-                let mut fg = TEXT_MAIN;
-                let mut bg = EDITOR_BG;
+                let mut fg = state.palette.text_main;
+                let mut bg = state.palette.editor_bg;
                 let mods = Modifier::empty();
 
                 if syntax_enabled {
                     // Find the token covering this byte position
                     for &(start, end, kind) in &tokens {
                         if byte_pos >= start && byte_pos < end {
-                            fg = token_color(kind);
+                            fg = token_color(&state.palette, kind);
                             break;
                         }
                     }
@@ -170,7 +140,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                 if let Some((sel_start, sel_end)) = sel_range {
                     let in_sel = is_in_selection(buf_row, byte_pos, sel_start, sel_end);
                     if in_sel {
-                        bg = SELECTION_BG;
+                        bg = state.palette.selection_bg;
                     }
                 }
 
@@ -183,9 +153,9 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                         {
                             if match_idx == state.search_result_idx {
                                 bg = search_current_bg;
-                                fg = SEARCH_CURRENT_FG;
+                                fg = state.palette.search_current_fg;
                             } else {
-                                bg = SEARCH_MATCH_BG;
+                                bg = state.palette.search_match_bg;
                             }
                             break;
                         }
@@ -201,7 +171,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                     && (ch == ' ' || ch == '\t');
 
                 let render_ch = if is_guide { '\u{2502}' } else { ch }; // '│'
-                let final_fg = if is_guide { INDENT_GUIDE } else { fg };
+                let final_fg = if is_guide { state.palette.indent_guide_fg } else { fg };
                 let style = Style::default().fg(final_fg).bg(bg).add_modifier(mods);
                 buf[(x, y)].set_char(render_ch).set_style(style);
                 x += 1;
@@ -218,16 +188,16 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
             // Clear remainder of line with explicit background to avoid ghost
             // selection artifacts when text is deleted or selection is cleared.
             while x < area.right() {
-                buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG));
+                buf[(x, y)].set_char(' ').set_style(Style::default().bg(state.palette.editor_bg));
                 x += 1;
             }
         } else {
             buf[(area.left(), y)]
                 .set_char('~')
-                .set_style(Style::default().fg(TILDE_COLOR).bg(EDITOR_BG));
+                .set_style(Style::default().fg(state.palette.tilde_fg).bg(state.palette.editor_bg));
             let mut x = area.left() + 1;
             while x < area.right() {
-                buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG));
+                buf[(x, y)].set_char(' ').set_style(Style::default().bg(state.palette.editor_bg));
                 x += 1;
             }
         }
@@ -263,7 +233,9 @@ fn is_in_selection(
 fn render_welcome(state: &EditorState, area: Rect, buf: &mut Buffer) {
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
-            buf[(x, y)].set_char(' ').set_style(Style::default().bg(EDITOR_BG).fg(EDITOR_BG));
+            buf[(x, y)].set_char(' ').set_style(
+                Style::default().bg(state.palette.editor_bg).fg(state.palette.editor_bg),
+            );
         }
     }
 
@@ -271,10 +243,8 @@ fn render_welcome(state: &EditorState, area: Rect, buf: &mut Buffer) {
         return;
     }
 
-    let (r, g, b) = state.config.theme.accent_rgb();
-    let welcome_name_fg = Color::Rgb(r, g, b);
-    let (r, g, b) = state.config.theme.warning_rgb();
-    let welcome_key_fg = Color::Rgb(r, g, b);
+    let welcome_name_fg = state.palette.theme_accent;
+    let welcome_key_fg = state.palette.theme_warning;
 
     let block_height: u16 = 4;
     let center_y = area.top() + area.height / 2;
@@ -307,8 +277,8 @@ fn render_welcome(state: &EditorState, area: Rect, buf: &mut Buffer) {
         let max_x = area.right();
 
         let key_style = Style::default().fg(welcome_key_fg);
-        let desc_style = Style::default().fg(WELCOME_DESC_FG);
-        let sep_style = Style::default().fg(WELCOME_SEP_FG);
+        let desc_style = Style::default().fg(state.palette.settings_dim_fg);
+        let sep_style = Style::default().fg(state.palette.overlay_rule_fg);
 
         for (i, (key, desc)) in hints.iter().enumerate() {
             if i > 0 {

@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.2-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.3-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
@@ -226,36 +226,62 @@ and then lets Homebrew clean up its formula state. If you installed manually,
 
 ## Requirements
 
-### Terminal — true-color support
+### Terminal color reliability
 
-chuch-term uses 24-bit RGB colours. On terminals without true-color support the UI
-may render with incorrect colours (e.g. magenta bottom bar, washed-out text).
+`chuch-term` now supports two rendering backends:
+
+- `rgb` — full 24-bit color for terminals that actually render RGB correctly
+- `ansi256` — stable compatibility palette for terminals that do not
+
+The default is:
+
+- `[render].color_mode = "auto"`
+
+In `auto`, `chuch-term` does **not** trust `COLORTERM=truecolor` by itself. It resolves
+an effective mode based on the terminal program:
+
+- Apple Terminal: `ansi256` fallback for predictable colors across macOS versions
+- known RGB-safe terminals like iTerm2, Ghostty, WezTerm, kitty, and Alacritty: `rgb`
+- unknown terminals: `ansi256`
+
+This avoids the old case where a terminal announced truecolor but still rendered
+washed-out text or a magenta bottom bar.
 
 **Recommended terminals:**
-- macOS: Apple Terminal with truecolor configured, [iTerm2](https://iterm2.com), Ghostty, or WezTerm
-- Linux: kitty, alacritty, WezTerm, or any terminal with `COLORTERM=truecolor`
+- macOS: Apple Terminal in default `auto` mode, or [iTerm2](https://iterm2.com), Ghostty, WezTerm for full RGB
+- Linux: kitty, alacritty, WezTerm, or any terminal known to render RGB correctly
 
-**Verify and fix:**
+**Verify what chuch-term actually chose:**
 
 ```bash
-# Check whether true-color is announced:
-echo $COLORTERM          # should print: truecolor
-
 # Full diagnostics:
 chuch-term --debug-env
-
-# If COLORTERM is not set, add to your shell profile (~/.zshrc / ~/.bashrc):
-export COLORTERM=truecolor
 ```
 
-`--debug-env` also shows the active config path, loaded theme values, and clarifies
-that the editor background is built-in while `theme.bg_bar` controls the bottom bars. If colours
-still look wrong after enabling truecolor, verify that the config path shown there is
-the one you expect.
+`--debug-env` shows:
+- the declared terminal signals (`TERM`, `COLORTERM`, `TERM_PROGRAM`)
+- requested color mode from config
+- effective render mode selected by `chuch-term`
+- the reason for that decision
+- the active config path and loaded theme values
+
+If your terminal really supports RGB and you want to force it, use:
+
+```toml
+[render]
+color_mode = "rgb"
+```
+
+For safest compatibility across machines, keep:
+
+```toml
+[render]
+color_mode = "auto"
+```
 
 ### macOS cleanup after 0.6.1
 
-If you tested `0.6.1` on macOS and want a truly fresh install before `0.6.2`, remove both
+If you tested `0.6.1` on macOS and want a truly fresh install before `0.6.3`, remove both
 the canonical config and the accidental legacy config path:
 
 ```bash
@@ -306,6 +332,12 @@ indent_errors = false     # Highlight inconsistent indentation in red (YAML, Pyt
 # "osc52" = force OSC-52 escape sequences (best for SSH)
 strategy = "auto"
 
+[render]
+# "auto" = stable default chosen from terminal type
+# "rgb" = force 24-bit colours on known-good terminals
+# "ansi256" = force 256-colour fallback for maximum compatibility
+color_mode = "auto"
+
 [theme]
 # Hex colour strings — edit and save; the editor picks up changes within 2 seconds.
 # Main accent colour: keybinding hints, highlights, selected items, active line number.
@@ -320,8 +352,8 @@ bg_bar  = "#121212"
 
 Open with `Ctrl+P → Open Config` or `Alt+,` (`Option+,` on macOS — Settings overlay).
 The overlay saves changes to `config.toml` on close. Config file changes (including
-`[theme]`) are hot-reloaded within 2 seconds — no restart needed. The editor background
-itself stays built-in in `0.6.2`; only the bottom bars are controlled by `theme.bg_bar`.
+`[theme]` and `[render]`) are hot-reloaded within 2 seconds — no restart needed. The editor background
+itself stays built-in in `0.6.3`; only the bottom bars are controlled by `theme.bg_bar`.
 
 ---
 

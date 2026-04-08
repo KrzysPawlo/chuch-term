@@ -1,5 +1,6 @@
 mod app;
 mod clipboard;
+mod color;
 mod commands;
 mod config;
 mod editor;
@@ -23,7 +24,7 @@ struct Args {
     #[arg(long)]
     uninstall: bool,
 
-    /// Print terminal environment diagnostics (TERM, COLORTERM, color depth) and exit.
+    /// Print terminal environment diagnostics and resolved render mode, then exit.
     #[arg(long)]
     debug_env: bool,
 }
@@ -52,7 +53,10 @@ struct DebugEnvReport {
     terminal_size: Option<(u16, u16)>,
     os: &'static str,
     arch: &'static str,
-    color_support: &'static str,
+    declared_color_support: &'static str,
+    requested_color_mode: &'static str,
+    effective_color_mode: &'static str,
+    color_reason: &'static str,
     config_path: String,
     config_exists: bool,
     config_note: Option<String>,
@@ -61,11 +65,7 @@ struct DebugEnvReport {
 }
 
 fn collect_debug_env_report() -> DebugEnvReport {
-    use std::env;
-
-    let term = env::var("TERM").unwrap_or_else(|_| "(not set)".into());
-    let colorterm = env::var("COLORTERM").unwrap_or_else(|_| "(not set)".into());
-    let term_program = env::var("TERM_PROGRAM").unwrap_or_else(|_| "(not set)".into());
+    let env = crate::color::TerminalEnv::detect();
     let terminal_size = crossterm::terminal::size().ok();
     let config_path = crate::config::config_path()
         .map(|p| p.display().to_string())
@@ -74,15 +74,18 @@ fn collect_debug_env_report() -> DebugEnvReport {
         .is_some_and(|path| path.exists());
     let (loaded_config, config_note) = crate::config::load_existing_config();
     let using_defaults = loaded_config.is_none();
-    let theme = loaded_config
-        .map(|cfg| cfg.theme)
-        .unwrap_or_default();
+    let config = loaded_config.unwrap_or_default();
+    let theme = config.theme.clone();
+    let render_decision = crate::color::resolve_render_decision(&config, &env);
 
     DebugEnvReport {
-        color_support: detect_color_support(&term, &colorterm),
-        term,
-        colorterm,
-        term_program,
+        declared_color_support: render_decision.declared_support,
+        requested_color_mode: render_decision.requested.as_str(),
+        effective_color_mode: render_decision.effective.as_str(),
+        color_reason: render_decision.reason,
+        term: env.term,
+        colorterm: env.colorterm,
+        term_program: env.term_program,
         terminal_size,
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
@@ -91,19 +94,6 @@ fn collect_debug_env_report() -> DebugEnvReport {
         config_note,
         using_defaults,
         theme,
-    }
-}
-
-fn detect_color_support(term: &str, colorterm: &str) -> &'static str {
-    let colorterm = colorterm.trim().to_ascii_lowercase();
-    let term = term.trim().to_ascii_lowercase();
-
-    match colorterm.as_str() {
-        "truecolor" | "24bit" => "truecolor declared by COLORTERM",
-        _ if term.contains("256color") => {
-            "256-color terminal reported; truecolor not confirmed, so colors may differ"
-        }
-        _ => "basic / unknown terminal colors; UI may render incorrectly",
     }
 }
 
@@ -125,7 +115,10 @@ fn format_debug_env_report(report: &DebugEnvReport) -> String {
     }
     let _ = writeln!(out, "  OS           : {}", report.os);
     let _ = writeln!(out, "  Arch         : {}", report.arch);
-    let _ = writeln!(out, "  Color support: {}", report.color_support);
+    let _ = writeln!(out, "  Declared RGB : {}", report.declared_color_support);
+    let _ = writeln!(out, "  Requested    : {}", report.requested_color_mode);
+    let _ = writeln!(out, "  Effective    : {}", report.effective_color_mode);
+    let _ = writeln!(out, "  Decision     : {}", report.color_reason);
     let _ = writeln!(out);
     let _ = writeln!(out, "  Config path  : {}", report.config_path);
     let _ = writeln!(
@@ -146,7 +139,7 @@ fn format_debug_env_report(report: &DebugEnvReport) -> String {
     let _ = writeln!(out, "  Theme.warning: {}", report.theme.warning);
     let _ = writeln!(out, "  Theme.dim    : {}", report.theme.dim);
     let _ = writeln!(out, "  Theme.bg_bar : {}", report.theme.bg_bar);
-    let _ = writeln!(out, "  Editor.bg    : built-in #121212");
+    let _ = writeln!(out, "  Editor.bg    : built-in {}", crate::color::EDITOR_BG_HEX);
     let _ = writeln!(
         out,
         "  Theme scope  : bg_bar applies to bottom bars; the editor background is fixed"
@@ -157,13 +150,13 @@ fn format_debug_env_report(report: &DebugEnvReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "  Hint: chuch-term expects a truecolor terminal and the active config above."
+        "  Hint: chuch-term uses the effective render mode above, not just COLORTERM."
     );
     let _ = writeln!(
         out,
-        "        If colors look wrong and COLORTERM is not set to truecolor, add:"
+        "        Use [render].color_mode = \"rgb\" only on terminals that actually render RGB correctly."
     );
-    let _ = writeln!(out, "        export COLORTERM=truecolor");
+    let _ = writeln!(out, "        For safest compatibility, keep color_mode = \"auto\".");
     out
 }
 
@@ -198,7 +191,10 @@ mod tests {
             terminal_size: Some((120, 40)),
             os: "macos",
             arch: "aarch64",
-            color_support: "truecolor declared by COLORTERM",
+            declared_color_support: "RGB announced by COLORTERM",
+            requested_color_mode: "auto",
+            effective_color_mode: "ansi256",
+            color_reason: "Apple Terminal uses ANSI-256 fallback in auto mode for color reliability",
             config_path: "/tmp/.config/chuch-term/config.toml".to_string(),
             config_exists: true,
             config_note: None,
@@ -217,29 +213,33 @@ mod tests {
         assert!(output.contains("#121212"));
         assert!(output.contains("Editor.bg"));
         assert!(output.contains("Theme scope"));
+        assert!(output.contains("Requested"));
+        assert!(output.contains("Effective"));
+        assert!(output.contains("Decision"));
     }
 
     #[test]
-    fn debug_env_report_explains_truecolor_without_overclaiming() {
+    fn debug_env_report_explains_effective_render_mode() {
         let output = format_debug_env_report(&sample_report());
 
-        assert!(output.contains("expects a truecolor terminal"));
-        assert!(!output.contains("best results"));
+        assert!(output.contains("uses the effective render mode above"));
+        assert!(output.contains("Apple Terminal uses ANSI-256 fallback"));
     }
 
     #[test]
-    fn detect_color_support_handles_non_truecolor_term() {
-        assert_eq!(
-            detect_color_support("xterm-256color", "(not set)"),
-            "256-color terminal reported; truecolor not confirmed, so colors may differ"
+    fn collect_debug_env_report_tracks_auto_fallback() {
+        let config = crate::config::EditorConfig::default();
+        let decision = crate::color::resolve_render_decision(
+            &config,
+            &crate::color::TerminalEnv {
+                term: "xterm-256color".into(),
+                colorterm: "TRUECOLOR".into(),
+                term_program: "Apple_Terminal".into(),
+            },
         );
-    }
 
-    #[test]
-    fn detect_color_support_is_case_insensitive() {
-        assert_eq!(
-            detect_color_support("XTERM-256COLOR", "TRUECOLOR"),
-            "truecolor declared by COLORTERM"
-        );
+        assert_eq!(decision.requested.as_str(), "auto");
+        assert_eq!(decision.effective.as_str(), "ansi256");
+        assert_eq!(decision.declared_support, "RGB announced by COLORTERM");
     }
 }

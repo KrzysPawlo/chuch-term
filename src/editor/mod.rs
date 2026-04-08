@@ -102,6 +102,8 @@ pub struct EditorState {
 
     // ── Config ───────────────────────────────────────────────────────────
     pub config: crate::config::EditorConfig,
+    pub render_decision: crate::color::RenderDecision,
+    pub palette: crate::color::Palette,
     pub config_mtime: Option<std::time::SystemTime>,
 
     // ── Previous buffer (for GoBackBuffer after OpenConfig) ───────────────
@@ -119,17 +121,27 @@ impl EditorState {
         }
     }
 
-    pub fn new_empty() -> Self {
-        let (config, config_msg) = crate::config::load_config();
+    fn resolve_rendering(
+        config: &crate::config::EditorConfig,
+    ) -> (crate::color::RenderDecision, crate::color::Palette) {
+        let env = crate::color::TerminalEnv::detect();
+        let render_decision = crate::color::resolve_render_decision(config, &env);
+        let palette = crate::color::build_palette(config, render_decision.effective);
+        (render_decision, palette)
+    }
+
+    fn build(buffer: TextBuffer, config: crate::config::EditorConfig, status_message: Option<String>) -> Self {
         let line_number_mode = Self::line_number_mode_for(&config);
         let config_mtime = crate::config::config_mtime();
+        let (render_decision, palette) = Self::resolve_rendering(&config);
+
         Self {
-            buffer: TextBuffer::new_empty(),
+            buffer,
             cursor: Cursor::new(),
             viewport: Viewport::new(),
             viewport_height: 0,
             mode: EditorMode::Normal,
-            status_message: config_msg,
+            status_message,
             should_quit: false,
             pre_help_mode: EditorMode::Normal,
             history: crate::editor::history::History::new(),
@@ -152,94 +164,38 @@ impl EditorState {
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
             config,
+            render_decision,
+            palette,
             config_mtime,
             previous_buffer: None,
         }
+    }
+
+    pub fn new_empty() -> Self {
+        let (config, config_msg) = crate::config::load_config();
+        Self::build(TextBuffer::new_empty(), config, config_msg)
     }
 
     /// Open a new empty buffer pre-associated with `path` (file does not need to exist yet).
     pub fn new_with_path(path: &Path) -> Self {
         let (config, config_msg) = crate::config::load_config();
-        let line_number_mode = Self::line_number_mode_for(&config);
-        let config_mtime = crate::config::config_mtime();
         let mut buffer = TextBuffer::new_empty();
         buffer.file_path = Some(path.to_path_buf());
-        Self {
-            buffer,
-            cursor: Cursor::new(),
-            viewport: Viewport::new(),
-            viewport_height: 0,
-            mode: EditorMode::Normal,
-            status_message: config_msg,
-            should_quit: false,
-            pre_help_mode: EditorMode::Normal,
-            history: crate::editor::history::History::new(),
-            search_query: String::new(),
-            search_results: Vec::new(),
-            search_result_idx: 0,
-            replace_query: String::new(),
-            search_case_sensitive: false,
-            selection_anchor: None,
-            clipboard: String::new(),
-            line_number_mode,
-            goto_input: String::new(),
-            saveas_input: String::new(),
-            settings_cursor: 0,
-            editor_area_left: 0,
-            editor_area_top: 0,
-            editor_area_right: 0,
-            editor_area_bottom: 0,
-            palette_query: String::new(),
-            palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
-            palette_cursor: 0,
-            config,
-            config_mtime,
-            previous_buffer: None,
-        }
+        Self::build(buffer, config, config_msg)
     }
 
     pub fn from_file(path: &Path) -> Result<Self> {
         let (config, config_msg) = crate::config::load_config();
-        let line_number_mode = Self::line_number_mode_for(&config);
-        let config_mtime = crate::config::config_mtime();
         let buffer = TextBuffer::from_file(path)?;
-        Ok(Self {
-            buffer,
-            cursor: Cursor::new(),
-            viewport: Viewport::new(),
-            viewport_height: 0,
-            mode: EditorMode::Normal,
-            status_message: config_msg,
-            should_quit: false,
-            pre_help_mode: EditorMode::Normal,
-            history: crate::editor::history::History::new(),
-            search_query: String::new(),
-            search_results: Vec::new(),
-            search_result_idx: 0,
-            replace_query: String::new(),
-            search_case_sensitive: false,
-            selection_anchor: None,
-            clipboard: String::new(),
-            line_number_mode,
-            goto_input: String::new(),
-            saveas_input: String::new(),
-            settings_cursor: 0,
-            editor_area_left: 0,
-            editor_area_top: 0,
-            editor_area_right: 0,
-            editor_area_bottom: 0,
-            palette_query: String::new(),
-            palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
-            palette_cursor: 0,
-            config,
-            config_mtime,
-            previous_buffer: None,
-        })
+        Ok(Self::build(buffer, config, config_msg))
     }
 
     pub fn apply_config(&mut self, config: crate::config::EditorConfig) {
+        let (render_decision, palette) = Self::resolve_rendering(&config);
         self.line_number_mode = Self::line_number_mode_for(&config);
         self.config = config;
+        self.render_decision = render_decision;
+        self.palette = palette;
     }
 
     /// Display name for the status bar (filename or "[New File]").
@@ -288,12 +244,14 @@ mod tests {
         config.editor.relative_numbers = true;
         config.editor.syntax_highlight = false;
         config.clipboard.strategy = "internal".to_string();
+        config.render.color_mode = "ansi256".to_string();
 
         state.apply_config(config.clone());
 
         assert_eq!(state.line_number_mode, LineNumberMode::Relative);
         assert!(!state.config.editor.syntax_highlight);
         assert_eq!(state.config.clipboard.strategy, "internal");
+        assert_eq!(state.render_decision.effective.as_str(), "ansi256");
 
         config.editor.line_numbers = false;
         state.apply_config(config);

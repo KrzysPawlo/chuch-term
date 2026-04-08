@@ -6,14 +6,6 @@ use ratatui::{
 };
 use crate::editor::EditorState;
 
-// ── Hardcoded (non-themed) design tokens ──────────────────────────────
-const OVERLAY_BG: Color = Color::Rgb(10, 10, 10);      // #0a0a0a  deep cosmic black
-const VERSION_FG: Color = Color::Rgb(50, 50, 50);      // #323232  very dim version
-const SECTION_FG: Color = Color::Rgb(130, 130, 130);   // #828282  section headers
-const DESC_FG:    Color = Color::Rgb(190, 190, 190);   // #bebebe  descriptions
-const RULE_FG:    Color = Color::Rgb(32, 32, 32);      // #202020  separator lines
-const FOOTER_FG:  Color = Color::Rgb(50, 50, 50);      // #323232  footer hint
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Full-screen help overlay. Rendered on top of everything when mode == Help.
@@ -23,27 +15,26 @@ pub struct HelpOverlay<'a> {
 
 impl<'a> Widget for HelpOverlay<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let overlay_bg = self.state.palette.overlay_bg;
         // Fill entire area with overlay background first — this covers all existing cells.
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
                 buf[(x, y)]
                     .set_char(' ')
-                    .set_bg(OVERLAY_BG)
-                    .set_fg(OVERLAY_BG);
+                    .set_bg(overlay_bg)
+                    .set_fg(overlay_bg);
             }
         }
 
-        let (r, g, b) = self.state.config.theme.accent_rgb();
-        let accent = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.warning_rgb();
-        let key_fg = Color::Rgb(r, g, b);
+        let accent = self.state.palette.theme_accent;
+        let key_fg = self.state.palette.theme_warning;
 
         if area.width < 50 || area.height < 12 {
-            render_compact(area, buf, accent);
+            render_compact(area, buf, accent, overlay_bg);
             return;
         }
 
-        render_full(area, buf, accent, key_fg);
+        render_full(area, buf, &self.state.palette, accent, key_fg);
     }
 }
 
@@ -63,8 +54,15 @@ fn put(buf: &mut Buffer, x: u16, y: u16, text: &str, style: Style, max_x: u16) -
 }
 
 /// Draw a horizontal rule from x to max_x at row y. Returns next y.
-fn rule(buf: &mut Buffer, y: u16, x: u16, max_x: u16) -> u16 {
-    let style = Style::default().fg(RULE_FG).bg(OVERLAY_BG);
+fn rule(
+    buf: &mut Buffer,
+    y: u16,
+    x: u16,
+    max_x: u16,
+    rule_fg: Color,
+    overlay_bg: Color,
+) -> u16 {
+    let style = Style::default().fg(rule_fg).bg(overlay_bg);
     let mut cx = x;
     while cx < max_x {
         buf[(cx, y)].set_char('\u{2500}').set_style(style); // ─
@@ -92,7 +90,8 @@ fn kv(buf: &mut Buffer, y: u16, x: u16, max_x: u16, key: &str, desc: &str, style
         cx += 1;
     }
     // Pad remaining key column with spaces.
-    let bg_style = Style::default().bg(OVERLAY_BG).fg(OVERLAY_BG);
+    let fill_bg = styles.key.bg.unwrap_or(Color::Reset);
+    let bg_style = Style::default().bg(fill_bg).fg(fill_bg);
     while cx < x + styles.key_w && cx < max_x {
         buf[(cx, y)].set_char(' ').set_style(bg_style);
         cx += 1;
@@ -109,7 +108,14 @@ fn kv(buf: &mut Buffer, y: u16, x: u16, max_x: u16, key: &str, desc: &str, style
 
 // ── Full layout (≥ 50 cols, ≥ 12 rows) ────────────────────────────────
 
-fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
+fn render_full(
+    area: Rect,
+    buf: &mut Buffer,
+    palette: &crate::color::Palette,
+    accent: Color,
+    key_fg: Color,
+) {
+    let overlay_bg = palette.overlay_bg;
     let margin = area.left() + 3;
     let right = area.right().saturating_sub(3);
     let mut y = area.top() + 1;
@@ -117,7 +123,7 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
     // ── Header ────────────────────────────────────────────────────────
     let header_style = Style::default()
         .fg(accent)
-        .bg(OVERLAY_BG)
+        .bg(overlay_bg)
         .add_modifier(Modifier::BOLD);
 
     let hx = put(buf, margin, y, "chuch-term", header_style, right);
@@ -125,12 +131,12 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
     let ver = format!("v{VERSION}");
     let ver_x = right.saturating_sub(ver.len() as u16);
     if ver_x > hx {
-        put(buf, ver_x, y, &ver, Style::default().fg(VERSION_FG).bg(OVERLAY_BG), right);
+        put(buf, ver_x, y, &ver, Style::default().fg(palette.overlay_version_fg).bg(overlay_bg), right);
     }
     y += 1;
     y += 1;
 
-    y = rule(buf, y, margin, right);
+    y = rule(buf, y, margin, right, palette.overlay_rule_fg, overlay_bg);
     y += 1;
 
     // ── Two-column keybindings ─────────────────────────────────────────
@@ -140,13 +146,13 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
     const KEY_W: u16 = 12;
 
     let sec_style = Style::default()
-        .fg(SECTION_FG)
-        .bg(OVERLAY_BG)
+        .fg(palette.overlay_section_fg)
+        .bg(overlay_bg)
         .add_modifier(Modifier::BOLD);
     let kv_styles = KvStyles {
         key_w: KEY_W,
-        key: Style::default().fg(key_fg).bg(OVERLAY_BG).add_modifier(Modifier::BOLD),
-        desc: Style::default().fg(DESC_FG).bg(OVERLAY_BG),
+        key: Style::default().fg(key_fg).bg(overlay_bg).add_modifier(Modifier::BOLD),
+        desc: Style::default().fg(palette.overlay_desc_fg).bg(overlay_bg),
     };
 
     // Section headers.
@@ -190,7 +196,7 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
 
     // ── Footer ────────────────────────────────────────────────────────
     if y + 2 < area.bottom() {
-        y = rule(buf, y, margin, right);
+        y = rule(buf, y, margin, right, palette.overlay_rule_fg, overlay_bg);
         let footer = "Esc or ^H to close";
         let footer_x = right.saturating_sub(footer.len() as u16);
         put(
@@ -198,7 +204,7 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
             footer_x,
             y,
             footer,
-            Style::default().fg(FOOTER_FG).bg(OVERLAY_BG),
+            Style::default().fg(palette.overlay_footer_fg).bg(overlay_bg),
             area.right(),
         );
     }
@@ -206,7 +212,7 @@ fn render_full(area: Rect, buf: &mut Buffer, accent: Color, key_fg: Color) {
 
 // ── Compact layout (narrow / short terminal) ──────────────────────────
 
-fn render_compact(area: Rect, buf: &mut Buffer, accent: Color) {
+fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color) {
     let y = area.top() + area.height / 2;
     let msg = "chuch-term  \u{2014}  Esc to close help";
     let msg_len = msg.chars().count() as u16;
@@ -218,7 +224,7 @@ fn render_compact(area: Rect, buf: &mut Buffer, accent: Color) {
         x,
         y,
         msg,
-        Style::default().fg(accent).bg(OVERLAY_BG),
+        Style::default().fg(accent).bg(overlay_bg),
         area.right(),
     );
 }

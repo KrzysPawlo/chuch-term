@@ -1,16 +1,11 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::Widget,
 };
 use crate::editor::EditorState;
 use crate::commands::COMMANDS;
-
-// Hardcoded (non-themed) design tokens.
-const OVERLAY_BG: Color = Color::Rgb(10, 10, 10);
-const SEL_FG:     Color = Color::Rgb(10, 10, 10);   // dark text on accent selection bg
-const DIM:        Color = Color::Rgb(50, 50, 50);   // separator lines
 
 /// Column offset from the left margin where key hints are displayed.
 const CMD_KEY_COL: u16 = 25;
@@ -37,17 +32,17 @@ pub struct CommandPalette<'a> {
 impl<'a> Widget for CommandPalette<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Resolve theme colours.
-        let (r, g, b) = self.state.config.theme.accent_rgb();
-        let accent = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.warning_rgb();
-        let key_color = Color::Rgb(r, g, b);
-        let (r, g, b) = self.state.config.theme.dim_rgb();
-        let desc_color = Color::Rgb(r, g, b);
+        let accent = self.state.palette.theme_accent;
+        let key_color = self.state.palette.theme_warning;
+        let desc_color = self.state.palette.theme_dim;
+        let overlay_bg = self.state.palette.overlay_bg;
+        let selected_fg = self.state.palette.command_selected_fg;
+        let separator_fg = self.state.palette.command_separator_fg;
 
         // Fill background
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
-                buf[(x, y)].set_char(' ').set_bg(OVERLAY_BG).set_fg(OVERLAY_BG);
+                buf[(x, y)].set_char(' ').set_bg(overlay_bg).set_fg(overlay_bg);
             }
         }
 
@@ -62,13 +57,13 @@ impl<'a> Widget for CommandPalette<'a> {
         // ── Title ──────────────────────────────────────────────────────
         let title_style = Style::default()
             .fg(accent)
-            .bg(OVERLAY_BG)
+            .bg(overlay_bg)
             .add_modifier(Modifier::BOLD);
         put(buf, margin, y, "Command Palette", title_style, right);
         y += 1;
 
         // ── Query line ─────────────────────────────────────────────────
-        let query_style = Style::default().fg(accent).bg(OVERLAY_BG);
+        let query_style = Style::default().fg(accent).bg(overlay_bg);
         let mut qx = margin;
         qx = put(buf, qx, y, "> ", query_style, right);
         put(buf, qx, y, &self.state.palette_query, query_style, right);
@@ -80,7 +75,7 @@ impl<'a> Widget for CommandPalette<'a> {
 
         // ── Separator ─────────────────────────────────────────────────
         if y < area.bottom() {
-            let sep_style = Style::default().fg(DIM).bg(OVERLAY_BG);
+            let sep_style = Style::default().fg(separator_fg).bg(overlay_bg);
             for x in margin..right {
                 buf[(x, y)].set_char('\u{2500}').set_style(sep_style);
             }
@@ -113,10 +108,10 @@ impl<'a> Widget for CommandPalette<'a> {
 
             if is_selected {
                 for x in margin..right {
-                    buf[(x, y)].set_bg(accent).set_fg(SEL_FG);
+                    buf[(x, y)].set_bg(accent).set_fg(selected_fg);
                 }
-                let sel_style = Style::default().fg(SEL_FG).bg(accent);
-                let sel_bold  = Style::default().fg(SEL_FG).bg(accent).add_modifier(Modifier::BOLD);
+                let sel_style = Style::default().fg(selected_fg).bg(accent);
+                let sel_bold  = Style::default().fg(selected_fg).bg(accent).add_modifier(Modifier::BOLD);
 
                 let mut x = margin + 1;
                 x = put(buf, x, y, cmd.name, sel_bold, right);
@@ -130,9 +125,9 @@ impl<'a> Widget for CommandPalette<'a> {
                 }
                 let _ = x;
             } else {
-                let name_style = Style::default().fg(accent).bg(OVERLAY_BG);
-                let key_style  = Style::default().fg(key_color).bg(OVERLAY_BG);
-                let desc_style = Style::default().fg(desc_color).bg(OVERLAY_BG);
+                let name_style = Style::default().fg(accent).bg(overlay_bg);
+                let key_style  = Style::default().fg(key_color).bg(overlay_bg);
+                let desc_style = Style::default().fg(desc_color).bg(overlay_bg);
 
                 let mut x = margin + 1;
                 x = put(buf, x, y, cmd.name, name_style, right);
@@ -153,9 +148,9 @@ impl<'a> Widget for CommandPalette<'a> {
         // ── Footer ────────────────────────────────────────────────────
         {
             let fy = area.bottom().saturating_sub(1);
-            let fkey_style  = Style::default().fg(key_color).bg(OVERLAY_BG).add_modifier(Modifier::BOLD);
-            let fdesc_style = Style::default().fg(desc_color).bg(OVERLAY_BG);
-            let sep_style   = Style::default().fg(DIM).bg(OVERLAY_BG);
+            let fkey_style  = Style::default().fg(key_color).bg(overlay_bg).add_modifier(Modifier::BOLD);
+            let fdesc_style = Style::default().fg(desc_color).bg(overlay_bg);
+            let sep_style   = Style::default().fg(separator_fg).bg(overlay_bg);
 
             let parts: &[(&str, &str)] = &[
                 ("\u{2191}\u{2193}", " Navigate"),
