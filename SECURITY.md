@@ -4,8 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x   | ✅        |
-| < 0.5   | ❌        |
+| 0.6.x   | ✅        |
+| < 0.6   | ❌        |
+
+The first stable LTS baseline is `0.6.4`.
 
 ## Reporting a Vulnerability
 
@@ -71,5 +73,5 @@ Then ensure `~/.local/bin` is in your `PATH` (add to `~/.zshrc` or `~/.bashrc` i
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Alternatively, `cargo install --git` compiles locally — no binary download,
-no Gatekeeper, no `sudo` required.
+Alternatively, `cargo install --git https://github.com/KrzysPawlo/chuch-term --locked`
+compiles locally — no binary download, no Gatekeeper, no `sudo` required.

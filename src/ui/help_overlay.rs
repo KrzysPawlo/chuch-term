@@ -143,7 +143,7 @@ fn render_full(
     let half = (area.width.saturating_sub(6)) / 2;
     let col1 = margin;
     let col2 = margin + half;
-    const KEY_W: u16 = 12;
+    const KEY_W: u16 = 15;
 
     let sec_style = Style::default()
         .fg(palette.overlay_section_fg)
@@ -176,7 +176,7 @@ fn render_full(
         ("Ctrl+P",        "Command palette", "Ctrl+R",         "Find & replace"),
         ("Ctrl+A",        "Select all",      "Ctrl+O",         "Go back (prev file)"),
         ("Alt+U / Alt+L", "Upper/Lowercase", "Ctrl+W / Del",   "Delete word \u{2190}/\u{2192}"),
-        ("Ctrl+D",        "Duplicate line",  "Alt+,",          "Settings"),
+        ("Ctrl+D",        "Duplicate line",  "Alt+, / Ctrl+T", "Settings"),
     ];
 
     for (k1, d1, k2, d2) in rows {

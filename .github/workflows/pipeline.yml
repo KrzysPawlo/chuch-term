@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  # Default GITHUB_TOKEN scope for CI jobs; release widens this to contents: write.
+  # Default GITHUB_TOKEN scope for CI jobs; release jobs widen this to contents: write.
   contents: read
 
 env:
@@ -16,21 +16,55 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  version:
+    name: Version Contract
+    runs-on: ubuntu-latest
+    outputs:
+      cargo_version: ${{ steps.version.outputs.cargo_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: |
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          if [[ -z "${cargo_version}" ]]; then
+            echo "::error::Could not read package version from Cargo.toml"
+            exit 1
+          fi
 
-  # ── CI — runs on every push and PR ────────────────────────────────────
+          echo "cargo_version=${cargo_version}" >> "${GITHUB_OUTPUT}"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME}" != "v${cargo_version}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${cargo_version}"
+            exit 1
+          fi
 
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: version
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
 
+  msrv:
+    name: MSRV 1.78
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.78.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
   lint:
     name: Clippy
     runs-on: ubuntu-latest
+    needs: version
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -42,6 +76,7 @@ jobs:
   audit:
     name: Audit
     runs-on: ubuntu-latest
+    needs: version
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -52,16 +87,15 @@ jobs:
   deny:
     name: Deny (licenses + supply chain)
     runs-on: ubuntu-latest
+    needs: version
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
-  # ── Release — runs only on version tags (v*.*.*) ──────────────────────
-
   build:
     name: Build / ${{ matrix.asset }}
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, lint, audit, deny]
+    needs: [version, test, msrv, lint, audit, deny]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -96,12 +130,10 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          # Checksum on the binary — Safari-proof.
-          # Archive decompression by browsers doesn't affect verification.
-          shasum -a 256 chuch-term > ../../../chuch-term-${{ matrix.asset }}.sha256
-          tar czf chuch-term-${{ matrix.asset }}.tar.gz chuch-term
-          mv chuch-term-${{ matrix.asset }}.tar.gz ../../../
+          cd "target/${{ matrix.target }}/release"
+          shasum -a 256 chuch-term > "../../../chuch-term-${{ matrix.asset }}.sha256"
+          tar czf "chuch-term-${{ matrix.asset }}.tar.gz" chuch-term
+          mv "chuch-term-${{ matrix.asset }}.tar.gz" ../../../
 
       - uses: actions/upload-artifact@v4
         with:
@@ -113,7 +145,7 @@ jobs:
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -196,7 +228,94 @@ jobs:
             ### cargo install — no download, no Gatekeeper, no sudo
 
             ```bash
-            cargo install --git https://github.com/${{ github.repository }}
+            cargo install --git https://github.com/${{ github.repository }} --locked
             ```
 
             Requires Rust: [rustup.rs](https://rustup.rs)
+
+  sync-homebrew:
+    name: Sync Homebrew
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Require tap push token
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.HOMEBREW_CHUCH_PUSH_TOKEN }}" ]]; then
+            echo "::error::Missing HOMEBREW_CHUCH_PUSH_TOKEN secret"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-repo
+
+      - uses: actions/checkout@v4
+        with:
+          repository: KrzysPawlo/homebrew-chuch
+          token: ${{ secrets.HOMEBREW_CHUCH_PUSH_TOKEN }}
+          path: homebrew-chuch
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate canonical formula
+        shell: bash
+        run: |
+          chmod +x main-repo/scripts/release_version.sh
+
+          macos_arm_sha="$(shasum -a 256 artifacts/chuch-term-macos-arm.tar.gz | awk '{print $1}')"
+          macos_intel_sha="$(shasum -a 256 artifacts/chuch-term-macos-intel.tar.gz | awk '{print $1}')"
+          linux_x86_64_sha="$(shasum -a 256 artifacts/chuch-term-linux-x86_64.tar.gz | awk '{print $1}')"
+
+          main-repo/scripts/release_version.sh write-homebrew-formula \
+            "${{ needs.version.outputs.cargo_version }}" \
+            "${macos_arm_sha}" \
+            "${macos_intel_sha}" \
+            "${linux_x86_64_sha}" \
+            "main-repo/packaging/homebrew/chuch-term.rb"
+
+          main-repo/scripts/release_version.sh write-homebrew-formula \
+            "${{ needs.version.outputs.cargo_version }}" \
+            "${macos_arm_sha}" \
+            "${macos_intel_sha}" \
+            "${linux_x86_64_sha}" \
+            "homebrew-chuch/Formula/chuch-term.rb"
+
+          cmp \
+            "main-repo/packaging/homebrew/chuch-term.rb" \
+            "homebrew-chuch/Formula/chuch-term.rb"
+
+      - name: Commit main repo formula
+        shell: bash
+        run: |
+          cd main-repo
+          if git diff --quiet -- packaging/homebrew/chuch-term.rb; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/homebrew/chuch-term.rb
+          git commit -m "chore: sync Homebrew formula for v${{ needs.version.outputs.cargo_version }} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Commit tap repo formula
+        shell: bash
+        run: |
+          cd homebrew-chuch
+          if git diff --quiet -- Formula/chuch-term.rb; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/chuch-term.rb
+          git commit -m "chore: bump chuch-term to v${{ needs.version.outputs.cargo_version }} [skip ci]"
+          git push origin HEAD:main

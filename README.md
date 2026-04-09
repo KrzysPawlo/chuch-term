@@ -1,10 +1,12 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.3-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.4-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.78+-orange)
 
 A fast, minimal terminal text editor — built in Rust, works everywhere.
+
+`0.6.4` is the first stable LTS baseline: same editor model, polished release flow, and harder UTF-8/runtime edges removed.
 
 ```bash
 chuch-term file.rs       # edit a file
@@ -63,7 +65,7 @@ chuch-term --version
 > `xattr` removes the macOS Gatekeeper quarantine flag. It is required every time you
 > install a new binary downloaded from the internet and is not a security bypass —
 > it is the standard way to trust a binary you have explicitly chosen to install.
-> To avoid it entirely, use `cargo install --git` instead.
+> To avoid it entirely, use `cargo install --git https://github.com/KrzysPawlo/chuch-term --locked` instead.
 
 **No-sudo alternative** — install to your user directory (no admin password needed):
 
@@ -164,7 +166,7 @@ and then lets Homebrew clean up its formula state. If you installed manually,
 - **Mouse support** — left click inside the editor repositions the cursor
 - **Indent guides** — optional `│` markers at every indentation level
 - **Indentation error hints** — leading whitespace highlighted red when indentation is inconsistent (YAML, Python, Proto3)
-- **Settings overlay** — `Alt+,` (`Option+,` on macOS) opens a live settings panel; changes are saved to config.toml on close
+- **Settings overlay** — `Alt+,` (`Option+,` on macOS) or `Ctrl+T` opens a live settings panel; changes are saved to config.toml on close
 - **Config file** — `~/.config/chuch-term/config.toml`, hot-reloaded within 2s
 - **Single binary** — no runtime, no dependencies, copy the binary and go
 - **Atomic saves** — tmp→rename pattern, no data loss on crash
@@ -219,7 +221,7 @@ and then lets Homebrew clean up its formula state. If you installed manually,
 - `Ctrl+O` go back to previous file
 - `Ctrl+L` toggle line numbers
 - `Ctrl+P` command palette
-- `Alt+,` (`Option+,` on macOS) settings overlay
+- `Alt+,` (`Option+,` on macOS) or `Ctrl+T` settings overlay
 - `Ctrl+H` help overlay
 
 ---
@@ -281,7 +283,7 @@ color_mode = "auto"
 
 ### macOS cleanup after 0.6.1
 
-If you tested `0.6.1` on macOS and want a truly fresh install before `0.6.3`, remove both
+If you tested `0.6.1` on macOS and want a truly fresh install before `0.6.4`, remove both
 the canonical config and the accidental legacy config path:
 
 ```bash
@@ -350,10 +352,10 @@ dim     = "#5a5a5a"
 bg_bar  = "#121212"
 ```
 
-Open with `Ctrl+P → Open Config` or `Alt+,` (`Option+,` on macOS — Settings overlay).
+Open with `Ctrl+P → Open Config` or `Alt+,` (`Option+,` on macOS) / `Ctrl+T` (Settings overlay).
 The overlay saves changes to `config.toml` on close. Config file changes (including
 `[theme]` and `[render]`) are hot-reloaded within 2 seconds — no restart needed. The editor background
-itself stays built-in in `0.6.3`; only the bottom bars are controlled by `theme.bg_bar`.
+itself stays built-in in `0.6.4`; only the bottom bars are controlled by `theme.bg_bar`.
 
 ---
 

@@ -38,6 +38,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
     use AppAction::*;
 
     state.status_message = None;
+    clamp_cursor_to_buffer(state);
 
     match action {
         Noop => {}
@@ -142,12 +143,12 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         InsertChar(ch) => {
+            let cursor_before = state.cursor;
             let text = if ch == '\t' && state.config.editor.expand_tabs {
                 " ".repeat(state.config.editor.tab_width as usize)
             } else {
                 ch.to_string()
             };
-            let cursor_before = state.cursor;
             let change = build_change(
                 (cursor_before.row, cursor_before.col),
                 String::new(),
@@ -206,7 +207,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             let cursor_before = state.cursor;
             let indent = if state.config.editor.auto_indent {
                 let line = state.buffer.line(cursor_before.row);
-                let up_to_cursor = &line[..cursor_before.col.min(line.len())];
+                let up_to_cursor = &line[..state.buffer.clamp_column(cursor_before.row, cursor_before.col)];
                 up_to_cursor
                     .chars()
                     .take_while(|c| *c == ' ' || *c == '\t')
@@ -723,7 +724,8 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             apply_and_record_change(state, change, false);
             // Move to the new duplicate row, same column (clamped).
             state.cursor.row = row + 1;
-            state.cursor.col = orig_col.min(state.buffer.line(row + 1).len());
+            state.cursor.col = orig_col;
+            clamp_cursor_to_buffer(state);
         }
 
         // ── Settings overlay ──────────────────────────────────────────
@@ -989,6 +991,11 @@ fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState)
 /// Move one word to the left: skip whitespace left, then skip non-whitespace left.
 /// Crosses line boundaries when the cursor is at column 0.
 fn word_left_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
+    if lines.is_empty() {
+        return (0, 0);
+    }
+    let row = row.min(lines.len().saturating_sub(1));
+    let col = crate::editor::buffer::clamp_char_boundary(&lines[row], col);
     if col == 0 {
         if row == 0 {
             return (0, 0);
@@ -1025,7 +1032,12 @@ fn word_left_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
 /// Move one word to the right: skip non-whitespace right, then skip whitespace right.
 /// Crosses line boundaries when the cursor is at end of line.
 fn word_right_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
+    if lines.is_empty() {
+        return (0, 0);
+    }
+    let row = row.min(lines.len().saturating_sub(1));
     let line = &lines[row];
+    let col = crate::editor::buffer::clamp_char_boundary(line, col);
     if col >= line.len() {
         if row + 1 >= lines.len() {
             return (row, col);
@@ -1051,15 +1063,8 @@ fn word_right_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
 }
 
 fn clamp_cursor_to_buffer(state: &mut EditorState) {
-    let max_row = state.buffer.line_count().saturating_sub(1);
-    state.cursor.row = state.cursor.row.min(max_row);
-
-    let line = state.buffer.line(state.cursor.row);
-    let mut col = state.cursor.col.min(line.len());
-    while col > 0 && !line.is_char_boundary(col) {
-        col -= 1;
-    }
-    state.cursor.col = col;
+    (state.cursor.row, state.cursor.col) =
+        state.buffer.clamp_position(state.cursor.row, state.cursor.col);
 }
 
 fn clipboard_copy_status(
@@ -1234,6 +1239,17 @@ mod tests {
         let line = state.buffer.line(0);
         assert!(state.cursor.col <= line.len());
         assert!(line.is_char_boundary(state.cursor.col));
+    }
+
+    #[test]
+    fn insert_newline_clamps_invalid_utf8_cursor_before_slicing_indent() {
+        let mut state = state_with_lines(&["ąż test"]);
+        state.cursor = Cursor { row: 0, col: 1 };
+        state.config.editor.auto_indent = true;
+
+        apply_action(&mut state, AppAction::InsertNewline).expect("newline");
+
+        assert_eq!(state.buffer.lines, vec!["".to_string(), "ąż test".to_string()]);
     }
 
     // ── Word navigation helpers ───────────────────────────────────────────
@@ -1496,6 +1512,22 @@ mod tests {
         .expect("mouse event");
 
         assert_eq!(state.cursor, Cursor { row: 0, col: 2 });
+    }
+
+    #[test]
+    fn ctrl_t_opens_settings_overlay() {
+        let mut state = state_with_lines(&["hello"]);
+
+        handle_event(
+            Event::Key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char('t'),
+                KeyModifiers::CONTROL,
+            )),
+            &mut state,
+        )
+        .expect("ctrl+t");
+
+        assert_eq!(state.mode, EditorMode::Settings);
     }
 
     #[test]

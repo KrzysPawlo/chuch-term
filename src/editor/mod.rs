@@ -213,9 +213,8 @@ impl EditorState {
     /// Get the sorted selection range if one exists.
     pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
         let anchor = self.selection_anchor?;
-        let cur = self.cursor;
-        let (a_row, a_col) = (anchor.row, anchor.col);
-        let (c_row, c_col) = (cur.row, cur.col);
+        let (a_row, a_col) = self.buffer.clamp_position(anchor.row, anchor.col);
+        let (c_row, c_col) = self.buffer.clamp_position(self.cursor.row, self.cursor.col);
         if (a_row, a_col) <= (c_row, c_col) {
             Some(((a_row, a_col), (c_row, c_col)))
         } else {
@@ -256,5 +255,15 @@ mod tests {
         config.editor.line_numbers = false;
         state.apply_config(config);
         assert_eq!(state.line_number_mode, LineNumberMode::Off);
+    }
+
+    #[test]
+    fn selection_range_clamps_utf8_boundaries() {
+        let mut state = EditorState::new_empty();
+        state.buffer.lines = vec!["zażółć".to_string()];
+        state.selection_anchor = Some(Cursor { row: 0, col: 3 });
+        state.cursor = Cursor { row: 0, col: 8 };
+
+        assert_eq!(state.selection_range(), Some(((0, 2), (0, 8))));
     }
 }

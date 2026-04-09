@@ -14,18 +14,19 @@ Also confirm the binary inside each archive is still named:
 
 - `chuch-term`
 
-## 2. Update the formula
+## 2. Generate the formula
 
-Edit these files:
+Preferred path: let the release workflow do it.
 
-- `packaging/homebrew/chuch-term.rb`
-- `../homebrew-chuch/Formula/chuch-term.rb`
+It should:
+- compute archive SHA256 digests from the released `*.tar.gz` assets
+- run `scripts/release_version.sh write-homebrew-formula ...`
+- update both:
+  - `packaging/homebrew/chuch-term.rb`
+  - `homebrew-chuch/Formula/chuch-term.rb`
+- push the tap repo via `HOMEBREW_CHUCH_PUSH_TOKEN`
 
-Change:
-
-- `version`
-- every release `url`
-- every `sha256`
+Manual fallback only if the automation failed or needs a rerun.
 
 ## 3. Compute or verify SHA256
 
@@ -53,6 +54,8 @@ Tap destination:
 Keep both files identical.
 
 ## 5. Commit and push
+
+If the automation did not push successfully, use the generated formula content and push manually.
 
 Main repo:
 

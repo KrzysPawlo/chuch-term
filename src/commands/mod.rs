@@ -112,7 +112,7 @@ pub static COMMANDS: &[PaletteCommand] = &[
     },
     PaletteCommand {
         name: "open settings",
-        key: "Alt+,",
+        key: "Alt+, / Ctrl+T",
         action: AppAction::OpenSettings,
         description: "Open interactive settings panel",
     },

@@ -123,7 +123,7 @@ pub enum AppAction {
     DuplicateLine,        // Ctrl+D
 
     // Settings overlay
-    OpenSettings,         // Alt+, (Option+, on macOS)
+    OpenSettings,         // Alt+, (Option+, on macOS) or Ctrl+T
     CloseSettings,        // Esc in Settings mode — closes and saves to disk
     SettingsUp,           // ↑ in Settings
     SettingsDown,         // ↓ in Settings
@@ -269,6 +269,7 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                     KeyCode::Char('o') => AppAction::GoBackBuffer,
                     KeyCode::Char('r') => AppAction::StartReplace,
                     KeyCode::Char('d') => AppAction::DuplicateLine,
+                    KeyCode::Char('t') => AppAction::OpenSettings,
                     KeyCode::Char('w') => AppAction::DeleteWordBefore,
                     KeyCode::Left if shift => AppAction::ShiftWordLeft,
                     KeyCode::Right if shift => AppAction::ShiftWordRight,
@@ -315,5 +316,30 @@ pub fn map_key(event: KeyEvent, mode: EditorMode) -> AppAction {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctrl_t_opens_settings_in_normal_mode() {
+        let action = map_key(
+            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
+            EditorMode::Normal,
+        );
+
+        assert_eq!(action, AppAction::OpenSettings);
+    }
+
+    #[test]
+    fn alt_comma_still_opens_settings_in_normal_mode() {
+        let action = map_key(
+            KeyEvent::new(KeyCode::Char(','), KeyModifiers::ALT),
+            EditorMode::Normal,
+        );
+
+        assert_eq!(action, AppAction::OpenSettings);
     }
 }

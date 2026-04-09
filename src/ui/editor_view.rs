@@ -28,9 +28,9 @@ pub struct EditorView<'a> {
 impl<'a> EditorView<'a> {
     /// Calculate the display column of the cursor for correct horizontal placement.
     pub fn cursor_display_col(state: &EditorState) -> u16 {
-        let line = state.buffer.line(state.cursor.row);
+        let (row, target) = state.buffer.clamp_position(state.cursor.row, state.cursor.col);
+        let line = state.buffer.line(row);
         let mut display_col: u16 = 0;
-        let target = state.cursor.col.min(line.len());
         for (byte_idx, grapheme) in line.grapheme_indices(true) {
             if byte_idx >= target {
                 break;

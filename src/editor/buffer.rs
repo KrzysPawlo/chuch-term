@@ -65,13 +65,25 @@ impl TextBuffer {
 
     /// Convert a (row, col) position into an absolute byte offset in `full_text()`.
     pub fn absolute_offset(&self, row: usize, col: usize) -> usize {
-        let clamped_row = row.min(self.lines.len().saturating_sub(1));
+        let (clamped_row, clamped_col) = self.clamp_position(row, col);
         let mut offset = 0usize;
         for (idx, line) in self.lines.iter().enumerate().take(clamped_row) {
             offset += line.len() + 1; // account for the newline between lines
             let _ = idx;
         }
-        offset + col.min(self.lines[clamped_row].len())
+        offset + clamped_col
+    }
+
+    /// Clamp a byte offset to the nearest valid character boundary in a line.
+    pub fn clamp_column(&self, row: usize, col: usize) -> usize {
+        let row = row.min(self.lines.len().saturating_sub(1));
+        clamp_char_boundary(self.line(row), col)
+    }
+
+    /// Clamp a buffer position to a valid row and UTF-8 boundary.
+    pub fn clamp_position(&self, row: usize, col: usize) -> (usize, usize) {
+        let row = row.min(self.lines.len().saturating_sub(1));
+        (row, self.clamp_column(row, col))
     }
 
     /// Return the buffer position after inserting `text` at `start`.
@@ -97,7 +109,7 @@ impl TextBuffer {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) -> usize {
         let line = &mut self.lines[row];
-        let col = col.min(line.len());
+        let col = clamp_char_boundary(line, col);
         line.insert(col, ch);
         self.dirty = true;
         col + ch.len_utf8()
@@ -108,6 +120,7 @@ impl TextBuffer {
     /// Returns the new (row, col) after deletion.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn delete_char_before(&mut self, row: usize, col: usize) -> (usize, usize) {
+        let col = self.clamp_column(row, col);
         if col > 0 {
             let line = &mut self.lines[row];
             // Find the start of the previous char (handle multi-byte UTF-8).
@@ -132,12 +145,14 @@ impl TextBuffer {
     /// Returns the new (row, col) — the cursor does not move.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn delete_char_at(&mut self, row: usize, col: usize) -> (usize, usize) {
+        let col = self.clamp_column(row, col);
         let line_len = self.lines[row].len();
         if col < line_len {
-            let ch = self.lines[row][col..].chars().next().unwrap();
-            let end = col + ch.len_utf8();
-            self.lines[row].drain(col..end);
-            self.dirty = true;
+            let end = next_char_boundary(self.lines[row].as_str(), col);
+            if end > col {
+                self.lines[row].drain(col..end);
+                self.dirty = true;
+            }
             (row, col)
         } else if row + 1 < self.lines.len() {
             let next = self.lines.remove(row + 1);
@@ -153,7 +168,7 @@ impl TextBuffer {
     /// Returns the new cursor position (row+1, 0).
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn insert_newline(&mut self, row: usize, col: usize) -> (usize, usize) {
-        let col = col.min(self.lines[row].len());
+        let col = self.clamp_column(row, col);
         let remainder = self.lines[row].split_off(col);
         self.lines.insert(row + 1, remainder);
         self.dirty = true;
@@ -166,16 +181,18 @@ impl TextBuffer {
 
     /// Get the text in the range [start, end) where each is (row, col).
     pub fn text_in_range(&self, start: (usize, usize), end: (usize, usize)) -> String {
-        let (start_row, start_col) = start;
-        let (end_row, end_col) = end;
-        if start_row >= self.lines.len() {
+        if start.0 >= self.lines.len() {
             return String::new();
         }
-        let end_row = end_row.min(self.lines.len().saturating_sub(1));
+        let (start_row, start_col) = self.clamp_position(start.0, start.1);
+        let (end_row, end_col) = self.clamp_position(end.0, end.1);
         if start_row == end_row {
             let line = &self.lines[start_row];
             let s = start_col.min(line.len());
             let e = end_col.min(line.len());
+            if s >= e {
+                return String::new();
+            }
             return line[s..e].to_string();
         }
         let mut out = String::new();
@@ -199,12 +216,11 @@ impl TextBuffer {
 
     /// Delete the content in the range [start, end).
     pub fn delete_range(&mut self, start: (usize, usize), end: (usize, usize)) {
-        let (start_row, start_col) = start;
-        let (end_row, end_col) = end;
-        if start_row >= self.lines.len() {
+        if start.0 >= self.lines.len() {
             return;
         }
-        let end_row = end_row.min(self.lines.len().saturating_sub(1));
+        let (start_row, start_col) = self.clamp_position(start.0, start.1);
+        let (end_row, end_col) = self.clamp_position(end.0, end.1);
         if start_row == end_row {
             let line = &mut self.lines[start_row];
             let s = start_col.min(line.len());
@@ -238,7 +254,7 @@ impl TextBuffer {
         if row >= self.lines.len() {
             return;
         }
-        let col = col.min(self.lines[row].len());
+        let col = self.clamp_column(row, col);
         if !text.contains('\n') {
             self.lines[row].insert_str(col, text);
             self.dirty = true;
@@ -305,7 +321,7 @@ impl TextBuffer {
 
 /// Find the byte index of the start of the character before `pos` in `s`.
 pub(crate) fn prev_char_boundary(s: &str, pos: usize) -> usize {
-    let mut idx = pos.saturating_sub(1);
+    let mut idx = clamp_char_boundary(s, pos).saturating_sub(1);
     while idx > 0 && !s.is_char_boundary(idx) {
         idx -= 1;
     }
@@ -314,9 +330,17 @@ pub(crate) fn prev_char_boundary(s: &str, pos: usize) -> usize {
 
 /// Find the byte index of the start of the character after `pos` in `s`.
 pub(crate) fn next_char_boundary(s: &str, pos: usize) -> usize {
-    let mut idx = (pos + 1).min(s.len());
+    let mut idx = (clamp_char_boundary(s, pos) + 1).min(s.len());
     while idx < s.len() && !s.is_char_boundary(idx) {
         idx += 1;
+    }
+    idx
+}
+
+pub(crate) fn clamp_char_boundary(s: &str, pos: usize) -> usize {
+    let mut idx = pos.min(s.len());
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
     }
     idx
 }
@@ -451,6 +475,35 @@ mod tests {
         assert_eq!(b.line(0), "text");
         assert_eq!(b.line(1), "");
         assert_eq!((r, c), (1, 0));
+    }
+
+    #[test]
+    fn insert_char_clamps_to_utf8_boundary() {
+        let mut b = buf(&["zaż"]);
+        let new_col = b.insert_char(0, 3, 'X');
+        assert_eq!(b.line(0), "zaXż");
+        assert_eq!(new_col, 3);
+    }
+
+    #[test]
+    fn delete_at_clamps_to_utf8_boundary() {
+        let mut b = buf(&["zaż"]);
+        let (r, c) = b.delete_char_at(0, 3);
+        assert_eq!(b.line(0), "za");
+        assert_eq!((r, c), (0, 2));
+    }
+
+    #[test]
+    fn text_in_range_clamps_misaligned_boundaries() {
+        let b = buf(&["zażółć"]);
+        assert_eq!(b.text_in_range((0, 3), (0, 8)), "żół");
+    }
+
+    #[test]
+    fn clamp_position_snaps_to_valid_utf8_boundary() {
+        let b = buf(&["zażółć"]);
+        assert_eq!(b.clamp_position(0, 3), (0, 2));
+        assert_eq!(b.clamp_position(0, 11), (0, "zażółć".len()));
     }
 
     #[test]

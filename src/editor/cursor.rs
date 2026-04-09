@@ -15,14 +15,7 @@ impl Cursor {
 
     /// Clamp row and col to valid buffer positions.
     pub fn clamp(&mut self, buf: &TextBuffer) {
-        let max_row = buf.line_count().saturating_sub(1);
-        self.row = self.row.min(max_row);
-        let max_col = buf.line(self.row).len();
-        self.col = self.col.min(max_col);
-        // Ensure col is on a char boundary.
-        while self.col > 0 && !buf.line(self.row).is_char_boundary(self.col) {
-            self.col -= 1;
-        }
+        (self.row, self.col) = buf.clamp_position(self.row, self.col);
     }
 
     pub fn move_up(&mut self, buf: &TextBuffer) {
@@ -40,6 +33,7 @@ impl Cursor {
     }
 
     pub fn move_left(&mut self, buf: &TextBuffer) {
+        self.clamp(buf);
         if self.col > 0 {
             // Step back one char boundary.
             self.col -= 1;
@@ -54,14 +48,21 @@ impl Cursor {
     }
 
     pub fn move_right(&mut self, buf: &TextBuffer) {
+        self.clamp(buf);
         let line = buf.line(self.row);
-        if self.col < line.len() {
+        let col = self.col;
+        if col < line.len() {
             // Step forward one char.
-            let ch = line[self.col..].chars().next().unwrap();
-            self.col += ch.len_utf8();
+            if let Some(ch) = line[col..].chars().next() {
+                self.col = col + ch.len_utf8();
+            } else {
+                self.col = line.len();
+            }
         } else if self.row + 1 < buf.line_count() {
             self.row += 1;
             self.col = 0;
+        } else {
+            self.col = line.len();
         }
     }
 
@@ -70,6 +71,7 @@ impl Cursor {
     }
 
     pub fn end(&mut self, buf: &TextBuffer) {
+        self.clamp(buf);
         self.col = buf.line(self.row).len();
     }
 
@@ -152,5 +154,13 @@ mod tests {
         let mut c = Cursor { row: 0, col: 0 };
         c.page_down(&b, 20);
         assert_eq!(c.row, 2);
+    }
+
+    #[test]
+    fn move_right_clamps_misaligned_utf8_offset() {
+        let b = buf(&["zaż"]);
+        let mut c = Cursor { row: 0, col: 3 };
+        c.move_right(&b);
+        assert_eq!(c, Cursor { row: 0, col: 4 });
     }
 }

@@ -30,10 +30,20 @@ inside Homebrew and it does not invoke Cargo.
 
 ## Publish flow
 
-1. Update the formula in this directory for the new release.
-2. Mirror the same content into `homebrew-chuch/Formula/chuch-term.rb`.
-3. Commit and push both repos.
-4. Users install with:
+Tag-driven release automation is responsible for the final formula update.
+The workflow computes archive SHA256 digests from release assets and calls:
+
+```bash
+scripts/release_version.sh write-homebrew-formula <version> <arm_sha> <intel_sha> <linux_sha> <output_path>
+```
+
+That generated formula is written to:
+- `packaging/homebrew/chuch-term.rb`
+- `homebrew-chuch/Formula/chuch-term.rb`
+
+Manual fallback is only for reruns or emergency repair.
+
+Users install with:
 
 ```bash
 brew tap KrzysPawlo/chuch

@@ -7,6 +7,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-04-09
+
+> First stable LTS release.
+
+### Fixed
+- **UTF-8 boundary hardening** — cursor movement, buffer mutations, selection ranges, and edit actions now clamp misaligned byte offsets before slicing or mutating text, removing panic-risk from malformed runtime positions
+- **Selection/edit consistency** — range reads, deletes, newline insertion, duplicate-line cursor restore, and word navigation now normalize through the same buffer position contract instead of relying on scattered local assumptions
+- **Settings shortcut surface drift** — help overlay, command palette metadata, README, and local release/install docs now all document the same settings entrypoints
+
+### Changed
+- **Settings access** — `Ctrl+T` is now a second official shortcut for the settings overlay; `Alt+,` remains supported and unchanged
+- **Release contract** — CI now verifies the tag matches `Cargo.toml`, validates MSRV on Rust `1.78`, and prepares automated Homebrew formula sync from release assets instead of manual copy-paste
+- **Version tooling** — release bumping and Homebrew formula rendering are now centralized around `scripts/release_version.sh`, with `Cargo.toml` as the canonical version source
+
+### Added
+- Regression tests for misaligned UTF-8 cursor offsets in buffer, cursor, selection, and newline paths
+- Automated Homebrew sync workflow support for both the main repo formula and the `homebrew-chuch` tap repo
+- User-facing `0.6.4` LTS messaging across README, security docs, and release notes
+
 ## [0.6.3] - 2026-04-08
 
 ### Fixed
