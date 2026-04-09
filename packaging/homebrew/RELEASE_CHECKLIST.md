@@ -60,7 +60,7 @@ If the automation did not push successfully, use the generated formula content a
 Main repo:
 
 ```bash
-git add packaging/homebrew/chuch-term.rb packaging/homebrew/README.md packaging/homebrew/RELEASE_CHECKLIST.md README.md docs/install.md
+git add packaging/homebrew/chuch-term.rb packaging/homebrew/README.md packaging/homebrew/RELEASE_CHECKLIST.md README.md
 git commit -m "docs: refresh homebrew packaging for vX.Y.Z"
 git push
 ```

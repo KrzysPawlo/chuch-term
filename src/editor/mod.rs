@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn selection_range_clamps_utf8_boundaries() {
         let mut state = EditorState::new_empty();
-        state.buffer.lines = vec!["zażółć".to_string()];
+        state.buffer.set_lines_for_testing(vec!["zażółć".to_string()]);
         state.selection_anchor = Some(Cursor { row: 0, col: 3 });
         state.cursor = Cursor { row: 0, col: 8 };
 

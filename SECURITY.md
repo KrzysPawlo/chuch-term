@@ -7,7 +7,7 @@
 | 0.6.x   | ✅        |
 | < 0.6   | ❌        |
 
-The first supported LTS baseline is `0.6.5`.
+The current supported patch in the `0.6 LTS` line is `0.6.6`.
 
 ## Reporting a Vulnerability
 

@@ -1,5 +1,3 @@
-use regex::RegexBuilder;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchMatch {
     pub row: usize,
@@ -14,27 +12,49 @@ pub fn find_all(lines: &[String], query: &str, case_sensitive: bool) -> Vec<Sear
         return Vec::new();
     }
 
-    let pattern = regex::escape(query);
-    let regex = match RegexBuilder::new(&pattern)
-        .case_insensitive(!case_sensitive)
-        .unicode(true)
-        .build()
-    {
-        Ok(regex) => regex,
-        Err(_) => return Vec::new(),
-    };
-
+    let query_chars = (!case_sensitive).then(|| query.chars().collect::<Vec<_>>());
     let mut results = Vec::new();
     for (row, line) in lines.iter().enumerate() {
-        for capture in regex.find_iter(line) {
-            results.push(SearchMatch {
-                row,
-                start: capture.start(),
-                end: capture.end(),
-            });
+        if case_sensitive {
+            for (start, matched) in line.match_indices(query) {
+                results.push(SearchMatch {
+                    row,
+                    start,
+                    end: start + matched.len(),
+                });
+            }
+            continue;
+        }
+
+        let query_chars = query_chars.as_deref().unwrap_or(&[]);
+
+        for (start, _) in line.char_indices() {
+            if let Some(end) = match_literal_case_insensitive(line, start, query_chars) {
+                results.push(SearchMatch { row, start, end });
+            }
         }
     }
     results
+}
+
+fn match_literal_case_insensitive(line: &str, start: usize, query_chars: &[char]) -> Option<usize> {
+    let mut end = start;
+    let mut haystack = line[start..].chars();
+    for expected in query_chars {
+        let actual = haystack.next()?;
+        if !chars_equal_case_insensitive(actual, *expected) {
+            return None;
+        }
+        end += actual.len_utf8();
+    }
+    Some(end)
+}
+
+fn chars_equal_case_insensitive(left: char, right: char) -> bool {
+    if left == right {
+        return true;
+    }
+    left.to_lowercase().to_string() == right.to_lowercase().to_string()
 }
 
 #[cfg(test)]
@@ -92,8 +112,6 @@ mod tests {
 
     #[test]
     fn preserves_unicode_offsets() {
-        // "ZAŻÓŁĆ" is the correct uppercase of "zażółć" (z→Z, a→A, ż→Ż, ó→Ó, ł→Ł, ć→Ć).
-        // "ŻAŻÓŁĆ" starts with Ż (uppercase ż ≠ z), so it would NOT match "zażółć".
         let results = find_all(&lines(&["zażółć ZAŻÓŁĆ zażółć"]), "zażółć", false);
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].start, 0);
@@ -107,5 +125,11 @@ mod tests {
             results.iter().map(|item| item.start).collect::<Vec<_>>(),
             vec![0, 4, 8]
         );
+    }
+
+    #[test]
+    fn case_insensitive_search_handles_combining_sequences() {
+        let results = find_all(&lines(&["e\u{301}x E\u{301}X"]), "E\u{301}X", false);
+        assert_eq!(results.len(), 2);
     }
 }

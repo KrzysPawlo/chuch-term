@@ -1,4 +1,4 @@
-use super::buffer::TextBuffer;
+use super::buffer::{next_grapheme_boundary, prev_grapheme_boundary, TextBuffer};
 
 /// Cursor position in the buffer.
 /// `col` is a byte offset into the line string (not a character or display index).
@@ -35,12 +35,7 @@ impl Cursor {
     pub fn move_left(&mut self, buf: &TextBuffer) {
         self.clamp(buf);
         if self.col > 0 {
-            // Step back one char boundary.
-            self.col -= 1;
-            let line = buf.line(self.row);
-            while self.col > 0 && !line.is_char_boundary(self.col) {
-                self.col -= 1;
-            }
+            self.col = prev_grapheme_boundary(buf.line(self.row), self.col);
         } else if self.row > 0 {
             self.row -= 1;
             self.col = buf.line(self.row).len();
@@ -52,12 +47,7 @@ impl Cursor {
         let line = buf.line(self.row);
         let col = self.col;
         if col < line.len() {
-            // Step forward one char.
-            if let Some(ch) = line[col..].chars().next() {
-                self.col = col + ch.len_utf8();
-            } else {
-                self.col = line.len();
-            }
+            self.col = next_grapheme_boundary(line, col);
         } else if self.row + 1 < buf.line_count() {
             self.row += 1;
             self.col = 0;
@@ -99,11 +89,7 @@ mod tests {
     use crate::editor::buffer::TextBuffer;
 
     fn buf(lines: &[&str]) -> TextBuffer {
-        TextBuffer {
-            lines: lines.iter().map(|s| s.to_string()).collect(),
-            dirty: false,
-            file_path: None,
-        }
+        TextBuffer::from_lines(lines.iter().map(|s| s.to_string()).collect())
     }
 
     #[test]
@@ -157,10 +143,21 @@ mod tests {
     }
 
     #[test]
-    fn move_right_clamps_misaligned_utf8_offset() {
-        let b = buf(&["zaż"]);
-        let mut c = Cursor { row: 0, col: 3 };
+    fn move_right_clamps_misaligned_grapheme_offset() {
+        let b = buf(&["e\u{301}x"]);
+        let mut c = Cursor { row: 0, col: 1 };
         c.move_right(&b);
-        assert_eq!(c, Cursor { row: 0, col: 4 });
+        assert_eq!(c, Cursor { row: 0, col: "e\u{301}".len() });
+    }
+
+    #[test]
+    fn move_left_skips_whole_grapheme_cluster() {
+        let b = buf(&["A👨‍👩‍👧‍👦B"]);
+        let mut c = Cursor {
+            row: 0,
+            col: "A👨‍👩‍👧‍👦".len(),
+        };
+        c.move_left(&b);
+        assert_eq!(c, Cursor { row: 0, col: 1 });
     }
 }

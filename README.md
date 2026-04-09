@@ -1,12 +1,12 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.5-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.6-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.94+-orange)
 
 A minimal terminal editor for developers.
 
-`0.6.5` is the first supported LTS baseline: modern Rust/tooling, hardened UTF-8 and config flows, configurable shortcut profiles, and a cleaner release path.
+`0.6.6` is the current patch release in the `0.6 LTS` line: exact-save fidelity, grapheme-correct editing, stronger search/replace behavior, and broader DevOps file coverage.
 
 ```bash
 chuch-term file.rs
@@ -42,7 +42,7 @@ It stays intentionally small:
 
 ## What You Get
 
-- syntax highlighting for Rust, Python, JavaScript/TypeScript, Go, TOML, YAML, Shell, Markdown, and Proto3
+- syntax highlighting for Rust, Python, JavaScript/TypeScript, Go, TOML, YAML, Shell, Markdown, Proto3, logs, and common config files
 - incremental search and replace
 - unlimited undo / redo
 - selection plus system clipboard support
@@ -93,7 +93,7 @@ The editor is not modal. The current keymap is always the source of truth, and t
 
 ### Shortcut profiles
 
-`0.6.5` starts with the `ctrl` profile by default.
+`0.6 LTS` starts with the `ctrl` profile by default.
 
 You can:
 
@@ -174,6 +174,9 @@ xattr -d com.apple.quarantine /usr/local/bin/chuch-term
 chuch-term --version
 ```
 
+Safari may auto-decompress `.tar.gz` downloads into `.tar`. If your file still ends in `.tar.gz`,
+use that exact filename with `tar xf`.
+
 If you want to avoid `sudo`, install into `~/.local/bin` instead.
 
 ### Build from source
@@ -203,6 +206,9 @@ sudo mv chuch-term /usr/local/bin/
 xattr -d com.apple.quarantine /usr/local/bin/chuch-term
 chuch-term --version
 ```
+
+Safari may auto-decompress `.tar.gz` downloads into `.tar`. If your file still ends in `.tar.gz`,
+use that exact filename with `tar xf`.
 
 ---
 

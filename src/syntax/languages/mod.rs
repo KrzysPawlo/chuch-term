@@ -1,5 +1,7 @@
+pub mod config;
 pub mod go;
 pub mod js;
+pub mod log;
 pub mod markdown;
 pub mod proto;
 pub mod python;

@@ -7,6 +7,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-04-09
+
+### Fixed
+- **Save fidelity** — unchanged files now round-trip byte-for-byte, preserving UTF-8 BOM state, missing trailing newlines, and mixed `LF` / `CRLF` line endings instead of silently normalizing on save
+- **Unicode cursor/edit correctness** — cursor movement, delete/backspace, selection boundaries, and mouse hit-testing now clamp on grapheme clusters instead of raw `char` boundaries
+- **Replace-all hot path** — replace-all now applies row-aware edits with transactional undo/redo instead of rebuilding the entire document through one giant string replacement
+- **Literal search churn** — incremental search now uses a literal scanner instead of compiling a fresh regex on every refresh
+
+### Changed
+- **LTS patch line** — `0.6.6` is now the current shipped patch in the `0.6 LTS` line; public branding stays `0.6 LTS` while the package version advances normally
+- **Release helper scope** — `scripts/release_version.sh` now updates tracked public files only and no longer assumes ignored local `docs/` are part of the release contract
+- **Large-file behavior** — editor hot paths avoid extra whole-line clones in render and keep offset lookups cached inside the buffer model
+
+### Added
+- **DevOps file support** — first-class language detection for `.log`, rotated logs, `.out`, `.err`, `.conf`, `.cfg`, `.ini`, `.env`, `.properties`, plus explicit `.txt` / `.text` recognition
+- **Log and Config highlighting** — dedicated tokenizers for timestamps, levels, key-value fragments, INI sections, booleans, numeric literals, quoted values, and variable placeholders
+- **Release helper command** — `scripts/release_version.sh bump-next-lts` for consistent patch bumps on the active LTS line
+
 ## [0.6.5] - 2026-04-09
 
 > First supported LTS release.

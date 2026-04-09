@@ -3,11 +3,13 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 static COMMENT: OnceLock<Regex> = OnceLock::new();
+static DIRECTIVE: OnceLock<Regex> = OnceLock::new();
 static KEY: OnceLock<Regex> = OnceLock::new();
 static STRING_DQ: OnceLock<Regex> = OnceLock::new();
 static STRING_SQ: OnceLock<Regex> = OnceLock::new();
 static BOOLEAN: OnceLock<Regex> = OnceLock::new();
 static NUMBER: OnceLock<Regex> = OnceLock::new();
+static ANCHOR: OnceLock<Regex> = OnceLock::new();
 
 pub fn highlight(line: &str) -> Vec<SyntaxToken> {
     let mut tokens = Vec::new();
@@ -34,9 +36,20 @@ pub fn highlight(line: &str) -> Vec<SyntaxToken> {
 }
 
 fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
+    for m in DIRECTIVE
+        .get_or_init(|| Regex::new(r"^\s*(---|\.\.\.)\s*$").unwrap())
+        .find_iter(line)
+    {
+        tokens.push(SyntaxToken {
+            start: m.start(),
+            end: m.end(),
+            kind: TokenKind::Keyword,
+        });
+    }
+
     // key: patterns
     for m in KEY
-        .get_or_init(|| Regex::new(r"^\s*[\w\-\.]+\s*:").unwrap())
+        .get_or_init(|| Regex::new(r#"^\s*(?:-\s+)?(?:"[^"]+"|'[^']+'|[\w\-\.]+)\s*:"#).unwrap())
         .find_iter(line)
     {
         let key_end = line[m.start()..m.end()]
@@ -95,6 +108,17 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
             start: m.start(),
             end: m.end(),
             kind: TokenKind::Number,
+        });
+    }
+
+    for m in ANCHOR
+        .get_or_init(|| Regex::new(r"[&*][A-Za-z_][A-Za-z0-9_\-]*").unwrap())
+        .find_iter(line)
+    {
+        tokens.push(SyntaxToken {
+            start: m.start(),
+            end: m.end(),
+            kind: TokenKind::Attribute,
         });
     }
 }

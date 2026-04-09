@@ -5,7 +5,6 @@ use ratatui::{
     widgets::Widget,
 };
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::editor::EditorState;
 use crate::shortcuts::{LabelStyle, ShortcutAction};
 use crate::syntax::TokenKind;
@@ -30,15 +29,7 @@ impl<'a> EditorView<'a> {
     /// Calculate the display column of the cursor for correct horizontal placement.
     pub fn cursor_display_col(state: &EditorState) -> u16 {
         let (row, target) = state.buffer.clamp_position(state.cursor.row, state.cursor.col);
-        let line = state.buffer.line(row);
-        let mut display_col: u16 = 0;
-        for (byte_idx, grapheme) in line.grapheme_indices(true) {
-            if byte_idx >= target {
-                break;
-            }
-            display_col += grapheme.width() as u16;
-        }
-        display_col
+        crate::editor::buffer::display_col_for_byte(state.buffer.line(row), target) as u16
     }
 }
 
@@ -75,11 +66,11 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
         let y = area.top() + screen_row;
 
         if buf_row < line_count {
-            let line = state.buffer.line(buf_row).to_string();
+            let line = state.buffer.line(buf_row);
 
             // Get syntax tokens for this line
             let tokens: Vec<(usize, usize, TokenKind)> = if syntax_enabled {
-                crate::syntax::highlight_line(&line, lang)
+                crate::syntax::highlight_line(line, lang)
                     .into_iter()
                     .map(|t| (t.start, t.end, t.kind))
                     .collect()
@@ -98,7 +89,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
             // Check if this line has an indentation error (YAML / Python / Proto).
             let tab_width = state.config.editor.tab_width;
             let line_has_error = state.config.editor.indent_errors
-                && crate::syntax::has_indent_error(&line, tab_width, lang);
+                && crate::syntax::has_indent_error(line, tab_width, lang);
             let error_bg_color = crate::color::resolve_config_rgb(
                 state.render_decision.effective,
                 state.config.editor.indent_error_bg,
@@ -107,11 +98,10 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
 
             let mut x = area.left();
             let mut display_cols = 0usize;
-            let mut byte_pos = 0usize;
 
-            for ch in line.chars() {
-                let ch_width = UnicodeWidthChar::width(ch).unwrap_or(1);
-                if display_cols + ch_width > width || x >= area.right() {
+            for (byte_pos, grapheme) in line.grapheme_indices(true) {
+                let grapheme_width = crate::editor::buffer::grapheme_display_width(grapheme);
+                if display_cols + grapheme_width > width || x >= area.right() {
                     break;
                 }
 
@@ -169,21 +159,16 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                     && display_cols > 0
                     && tab_width > 0
                     && display_cols.is_multiple_of(tab_width as usize)
-                    && (ch == ' ' || ch == '\t');
+                    && (grapheme == " " || grapheme == "\t");
 
-                let render_ch = if is_guide { '\u{2502}' } else { ch }; // '│'
+                let render_grapheme = if is_guide { "\u{2502}" } else { grapheme };
                 let final_fg = if is_guide { state.palette.indent_guide_fg } else { fg };
                 let style = Style::default().fg(final_fg).bg(bg).add_modifier(mods);
-                buf[(x, y)].set_char(render_ch).set_style(style);
-                x += 1;
-
-                if ch_width == 2 && x < area.right() {
-                    buf[(x, y)].set_char(' ').set_style(style);
-                    x += 1;
-                }
-
-                display_cols += ch_width;
-                byte_pos += ch.len_utf8();
+                let next_x = buf
+                    .set_stringn(x, y, render_grapheme, grapheme_width, style)
+                    .0;
+                x = next_x;
+                display_cols += grapheme_width;
             }
 
             // Clear remainder of line with explicit background to avoid ghost

@@ -1,6 +1,8 @@
 # Homebrew Packaging — chuch-term
 
-This directory is the packaging source of truth for Homebrew support.
+This directory is the Homebrew packaging workspace for `chuch-term`.
+The committed formula may reflect the last published release until the tag-driven
+release workflow regenerates it from fresh release assets.
 
 ## Repo split
 

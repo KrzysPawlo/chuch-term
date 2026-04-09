@@ -7,6 +7,7 @@ static STRING: OnceLock<Regex> = OnceLock::new();
 static KEYWORDS: OnceLock<Regex> = OnceLock::new();
 static TYPES: OnceLock<Regex> = OnceLock::new();
 static NUMBER: OnceLock<Regex> = OnceLock::new();
+static ATTRIBUTE: OnceLock<Regex> = OnceLock::new();
 
 pub fn highlight(line: &str) -> Vec<SyntaxToken> {
     let mut tokens = Vec::new();
@@ -48,7 +49,7 @@ fn add_proto_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
     // Keywords
     for m in KEYWORDS
         .get_or_init(|| {
-            Regex::new(r"\b(syntax|package|import|option|message|enum|service|rpc|returns|oneof|repeated|map|reserved|extensions|extend|to|max|stream|weak|public)\b")
+            Regex::new(r"\b(syntax|package|import|option|message|enum|service|rpc|returns|oneof|repeated|map|reserved|extensions|extend|to|max|stream|weak|public|optional|required)\b")
                 .unwrap()
         })
         .find_iter(line)
@@ -84,6 +85,17 @@ fn add_proto_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
             start: m.start(),
             end: m.end(),
             kind: TokenKind::Number,
+        });
+    }
+
+    for m in ATTRIBUTE
+        .get_or_init(|| Regex::new(r"\[[^\]]+\]|\([^\)]+\)").unwrap())
+        .find_iter(line)
+    {
+        tokens.push(SyntaxToken {
+            start: m.start(),
+            end: m.end(),
+            kind: TokenKind::Attribute,
         });
     }
 }

@@ -8,6 +8,7 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/release_version.sh bump <version> [--lts]
+  scripts/release_version.sh bump-next-lts [--lts]
   scripts/release_version.sh write-homebrew-formula <version> <macos_arm_sha> <macos_intel_sha> <linux_x86_64_sha> <output_path>
 EOF
 }
@@ -88,28 +89,27 @@ bump() {
   ' "${REPO_ROOT}/Cargo.lock"
 
   replace_in_file "${REPO_ROOT}/README.md" "version-${old_version}-" "version-${new_version}-"
-  replace_in_file "${REPO_ROOT}/README.md" "before ${old_version}" "before ${new_version}"
-  replace_in_file "${REPO_ROOT}/README.md" "in \`${old_version}\`" "in \`${new_version}\`"
-  replace_in_file "${REPO_ROOT}/docs/install.md" "Default \`${old_version}\` behaviour:" "Default \`${new_version}\` behaviour:"
-  replace_in_file "${REPO_ROOT}/docs/architecture.md" "Supported config keys in ${old_version}:" "Supported config keys in ${new_version}:"
-  replace_in_file "${REPO_ROOT}/docs/architecture.md" "Render mode contract in \`${old_version}\`:" "Render mode contract in \`${new_version}\`:"
-  replace_in_file "${REPO_ROOT}/docs/architecture.md" "fixed in \`${old_version}\`" "fixed in \`${new_version}\`"
+  replace_in_file "${REPO_ROOT}/README.md" "\`${old_version}\` is the current patch release in the \`0.6 LTS\` line." "\`${new_version}\` is the current patch release in the \`0.6 LTS\` line."
   RUST_VERSION="$rust_version" perl -0pi -e '
     my $rust = $ENV{RUST_VERSION};
     s/rust-[0-9.]+\+-orange/rust-$rust+-orange/g;
     s/Rust `?[0-9.]+\+`?/Rust `$rust+`/g;
     s/Rust [0-9.]+\+/Rust $rust+/g;
     s/If you have Rust installed \([0-9.]+\+\):/If you have Rust installed ($rust+):/g;
-  ' "${REPO_ROOT}/README.md" "${REPO_ROOT}/docs/install.md" "${REPO_ROOT}/SECURITY.md" "${REPO_ROOT}/docs/release_instructions.md"
+  ' "${REPO_ROOT}/README.md" "${REPO_ROOT}/SECURITY.md"
+  replace_in_file "${REPO_ROOT}/SECURITY.md" "The current supported patch in the \`0.6 LTS\` line is \`${old_version}\`." "The current supported patch in the \`0.6 LTS\` line is \`${new_version}\`."
 
   if [[ "$lts_flag" == "true" ]]; then
-    replace_in_file "${REPO_ROOT}/README.md" "first stable LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
-    replace_in_file "${REPO_ROOT}/SECURITY.md" "first stable LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
-    replace_in_file "${REPO_ROOT}/README.md" "first supported LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
-    replace_in_file "${REPO_ROOT}/SECURITY.md" "first supported LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
+    replace_in_file "${REPO_ROOT}/README.md" "\`${old_version}\` is the current patch release in the \`0.6 LTS\` line." "\`${new_version}\` is the current patch release in the \`0.6 LTS\` line."
   fi
 
   ensure_changelog_section "$new_version" "$lts_flag"
+}
+
+next_patch_version() {
+  local current="$1"
+  IFS='.' read -r major minor patch <<<"$current"
+  printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))"
 }
 
 write_homebrew_formula() {
@@ -176,6 +176,20 @@ main() {
         exit 1
       fi
       bump "$2" "$lts_flag"
+      ;;
+    bump-next-lts)
+      if [[ $# -gt 2 ]]; then
+        usage
+        exit 1
+      fi
+      local lts_flag="false"
+      if [[ "${2:-}" == "--lts" ]]; then
+        lts_flag="true"
+      elif [[ $# -eq 2 ]]; then
+        usage
+        exit 1
+      fi
+      bump "$(next_patch_version "$(current_version)")" "$lts_flag"
       ;;
     write-homebrew-formula)
       if [[ $# -ne 6 ]]; then

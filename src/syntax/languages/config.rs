@@ -7,16 +7,15 @@ static SECTION: OnceLock<Regex> = OnceLock::new();
 static KEY: OnceLock<Regex> = OnceLock::new();
 static STRING_DQ: OnceLock<Regex> = OnceLock::new();
 static STRING_SQ: OnceLock<Regex> = OnceLock::new();
-static NUMBER: OnceLock<Regex> = OnceLock::new();
 static BOOLEAN: OnceLock<Regex> = OnceLock::new();
-static DATETIME: OnceLock<Regex> = OnceLock::new();
+static NUMBER: OnceLock<Regex> = OnceLock::new();
+static VARIABLE: OnceLock<Regex> = OnceLock::new();
 
 pub fn highlight(line: &str) -> Vec<SyntaxToken> {
     let mut tokens = Vec::new();
 
-    // Comments
     if let Some(m) = COMMENT
-        .get_or_init(|| Regex::new(r"#.*$").unwrap())
+        .get_or_init(|| Regex::new(r"(?:^|\s)[#;].*$").unwrap())
         .find(line)
     {
         let before = &line[..m.start()];
@@ -26,19 +25,18 @@ pub fn highlight(line: &str) -> Vec<SyntaxToken> {
             end: m.end(),
             kind: TokenKind::Comment,
         });
-        tokens.sort_by_key(|t| t.start);
+        tokens.sort_by_key(|token| token.start);
         return tokens;
     }
 
     add_tokens(line, &mut tokens);
-    tokens.sort_by_key(|t| t.start);
+    tokens.sort_by_key(|token| token.start);
     tokens
 }
 
 fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
-    // [section] headers
     for m in SECTION
-        .get_or_init(|| Regex::new(r"^\s*\[+[^\]]*\]+").unwrap())
+        .get_or_init(|| Regex::new(r"^\s*\[[^\]]+\]\s*$").unwrap())
         .find_iter(line)
     {
         tokens.push(SyntaxToken {
@@ -48,15 +46,13 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    // key = value — highlight the key
     for m in KEY
-        .get_or_init(|| Regex::new(r#"^\s*(?:"[^"]+"|'[^']+'|[\w\-\.]+)\s*="#).unwrap())
+        .get_or_init(|| Regex::new(r"^\s*[\w./-]+\s*[:=]").unwrap())
         .find_iter(line)
     {
-        // Only color up to but not including the '='
         let key_end = line[m.start()..m.end()]
-            .rfind('=')
-            .map(|i| m.start() + i)
+            .rfind(|ch| [':', '='].contains(&ch))
+            .map(|idx| m.start() + idx)
             .unwrap_or(m.end());
         tokens.push(SyntaxToken {
             start: m.start(),
@@ -65,7 +61,6 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    // Double-quoted strings
     for m in STRING_DQ
         .get_or_init(|| Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap())
         .find_iter(line)
@@ -77,9 +72,8 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    // Single-quoted strings
     for m in STRING_SQ
-        .get_or_init(|| Regex::new(r"'[^']*'").unwrap())
+        .get_or_init(|| Regex::new(r"'(?:[^'\\]|\\.)*'").unwrap())
         .find_iter(line)
     {
         tokens.push(SyntaxToken {
@@ -89,9 +83,8 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    // Booleans
     for m in BOOLEAN
-        .get_or_init(|| Regex::new(r"\b(true|false)\b").unwrap())
+        .get_or_init(|| Regex::new(r"\b(true|false|yes|no|on|off|enabled|disabled)\b").unwrap())
         .find_iter(line)
     {
         tokens.push(SyntaxToken {
@@ -101,7 +94,6 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    // Numbers
     for m in NUMBER
         .get_or_init(|| Regex::new(r"\b\d+(\.\d+)?\b").unwrap())
         .find_iter(line)
@@ -113,8 +105,8 @@ fn add_tokens(line: &str, tokens: &mut Vec<SyntaxToken>) {
         });
     }
 
-    for m in DATETIME
-        .get_or_init(|| Regex::new(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}Z?)?\b").unwrap())
+    for m in VARIABLE
+        .get_or_init(|| Regex::new(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?").unwrap())
         .find_iter(line)
     {
         tokens.push(SyntaxToken {

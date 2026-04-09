@@ -11,9 +11,19 @@ pub struct TextChange {
     pub cursor_after: Cursor,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HistoryEntry {
+    Single(TextChange),
+    Batch {
+        changes: Vec<TextChange>,
+        cursor_before: Cursor,
+        cursor_after: Cursor,
+    },
+}
+
 pub struct History {
-    pub undo_stack: Vec<TextChange>,
-    pub redo_stack: Vec<TextChange>,
+    pub undo_stack: Vec<HistoryEntry>,
+    pub redo_stack: Vec<HistoryEntry>,
     pub merge_enabled: bool,
 }
 
@@ -28,7 +38,7 @@ impl History {
 
     pub fn push(&mut self, change: TextChange) {
         if self.merge_enabled
-            && let Some(prev) = self.undo_stack.last_mut()
+            && let Some(HistoryEntry::Single(prev)) = self.undo_stack.last_mut()
             && can_merge(prev, &change)
         {
             prev.new_text.push_str(&change.new_text);
@@ -37,7 +47,7 @@ impl History {
             return;
         }
 
-        self.undo_stack.push(change);
+        self.undo_stack.push(HistoryEntry::Single(change));
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
             self.undo_stack.remove(0);
         }
@@ -50,6 +60,27 @@ impl History {
         self.merge_enabled = false;
         self.push(change);
         self.merge_enabled = saved;
+    }
+
+    pub fn push_batch_no_merge(
+        &mut self,
+        changes: Vec<TextChange>,
+        cursor_before: Cursor,
+        cursor_after: Cursor,
+    ) {
+        if changes.is_empty() {
+            return;
+        }
+
+        self.undo_stack.push(HistoryEntry::Batch {
+            changes,
+            cursor_before,
+            cursor_after,
+        });
+        if self.undo_stack.len() > MAX_UNDO_HISTORY {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
     }
 }
 

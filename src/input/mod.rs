@@ -5,8 +5,10 @@ pub use keybindings::{map_key, AppAction};
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 
-use crate::editor::buffer::{next_char_boundary, prev_char_boundary};
-use crate::editor::history::TextChange;
+use crate::editor::buffer::{
+    byte_for_display_col, grapheme_slice, next_grapheme_boundary, prev_grapheme_boundary,
+};
+use crate::editor::history::{HistoryEntry, TextChange};
 use crate::editor::{Cursor, EditorMode, EditorState, LineNumberMode, SearchMatch, TextBuffer};
 use crate::shortcuts::{ActiveShortcuts, KeyToken, ShortcutAction, ShortcutProfile};
 
@@ -166,7 +168,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
 
             if col > 0 {
                 let line = state.buffer.line(row);
-                let start_col = prev_char_boundary(line, col);
+                let start_col = prev_grapheme_boundary(line, col);
                 let old_text = line[start_col..col].to_string();
                 let change = build_change(
                     (row, start_col),
@@ -194,7 +196,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             let line = state.buffer.line(row);
 
             if col < line.len() {
-                let end = next_char_boundary(line, col);
+                let end = next_grapheme_boundary(line, col);
                 let old_text = line[col..end].to_string();
                 let change = build_change((row, col), old_text, String::new(), cursor_before);
                 apply_and_record_change(state, change, false);
@@ -261,16 +263,16 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         Undo => {
-            if let Some(change) = state.history.undo_stack.pop() {
-                apply_change_reverse(state, &change);
-                state.history.redo_stack.push(change);
+            if let Some(entry) = state.history.undo_stack.pop() {
+                apply_history_entry_reverse(state, &entry);
+                state.history.redo_stack.push(entry);
             }
         }
 
         Redo => {
-            if let Some(change) = state.history.redo_stack.pop() {
-                apply_change_forward(state, &change);
-                state.history.undo_stack.push(change);
+            if let Some(entry) = state.history.redo_stack.pop() {
+                apply_history_entry_forward(state, &entry);
+                state.history.undo_stack.push(entry);
             }
         }
 
@@ -591,18 +593,36 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
                 state.status_message = Some("No matches to replace".to_string());
             } else {
                 let cursor_before = state.cursor;
-                let old_text = state.buffer.full_text();
-                let new_text = build_replace_all_text(
-                    &state.buffer,
-                    &state.search_results,
-                    &state.replace_query,
-                );
                 let replacements = state.search_results.len();
+                let mut ordered = state.search_results.clone();
+                ordered.sort_by(|left, right| (right.row, right.start).cmp(&(left.row, left.start)));
+                let mut changes = Vec::with_capacity(ordered.len());
 
-                if old_text != new_text {
-                    let change =
-                        build_change_with_cursor((0, 0), old_text, new_text, cursor_before, cursor_before);
-                    apply_and_record_change(state, change, false);
+                for found in ordered {
+                    let old_text = state
+                        .buffer
+                        .text_in_range((found.row, found.start), (found.row, found.end));
+                    changes.push(build_change_with_cursor(
+                        (found.row, found.start),
+                        old_text,
+                        state.replace_query.clone(),
+                        cursor_before,
+                        cursor_before,
+                    ));
+                }
+
+                if !changes.is_empty() {
+                    for change in &changes {
+                        state
+                            .buffer
+                            .apply_change(change.start, &change.old_text, &change.new_text);
+                    }
+                    state.cursor = cursor_before;
+                    clamp_cursor_to_buffer(state);
+                    let cursor_after = state.cursor;
+                    state
+                        .history
+                        .push_batch_no_merge(changes, cursor_before, cursor_after);
                 }
 
                 refresh_search_results(state, true);
@@ -646,13 +666,13 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
 
         WordLeft => {
             state.selection_anchor = None;
-            let (row, col) = word_left_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            let (row, col) = word_left_pos(&state.buffer, state.cursor.row, state.cursor.col);
             state.cursor = Cursor { row, col };
         }
 
         WordRight => {
             state.selection_anchor = None;
-            let (row, col) = word_right_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            let (row, col) = word_right_pos(&state.buffer, state.cursor.row, state.cursor.col);
             state.cursor = Cursor { row, col };
         }
 
@@ -660,7 +680,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             if state.selection_anchor.is_none() {
                 state.selection_anchor = Some(state.cursor);
             }
-            let (row, col) = word_left_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            let (row, col) = word_left_pos(&state.buffer, state.cursor.row, state.cursor.col);
             state.cursor = Cursor { row, col };
         }
 
@@ -668,14 +688,14 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             if state.selection_anchor.is_none() {
                 state.selection_anchor = Some(state.cursor);
             }
-            let (row, col) = word_right_pos(&state.buffer.lines, state.cursor.row, state.cursor.col);
+            let (row, col) = word_right_pos(&state.buffer, state.cursor.row, state.cursor.col);
             state.cursor = Cursor { row, col };
         }
 
         DeleteWordBefore => {
             let cursor_before = state.cursor;
             let (target_row, target_col) =
-                word_left_pos(&state.buffer.lines, cursor_before.row, cursor_before.col);
+                word_left_pos(&state.buffer, cursor_before.row, cursor_before.col);
             if (target_row, target_col) != (cursor_before.row, cursor_before.col) {
                 let old_text = state
                     .buffer
@@ -694,7 +714,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         DeleteWordAfter => {
             let cursor_before = state.cursor;
             let (target_row, target_col) =
-                word_right_pos(&state.buffer.lines, cursor_before.row, cursor_before.col);
+                word_right_pos(&state.buffer, cursor_before.row, cursor_before.col);
             if (target_row, target_col) != (cursor_before.row, cursor_before.col) {
                 let old_text = state
                     .buffer
@@ -866,6 +886,46 @@ fn apply_and_record_change(state: &mut EditorState, change: TextChange, allow_me
     }
 }
 
+fn apply_history_entry_forward(state: &mut EditorState, entry: &HistoryEntry) {
+    match entry {
+        HistoryEntry::Single(change) => apply_change_forward(state, change),
+        HistoryEntry::Batch {
+            changes,
+            cursor_after,
+            ..
+        } => {
+            for change in changes {
+                state
+                    .buffer
+                    .apply_change(change.start, &change.old_text, &change.new_text);
+            }
+            state.cursor = *cursor_after;
+            clamp_cursor_to_buffer(state);
+            sync_search_results_after_buffer_change(state);
+        }
+    }
+}
+
+fn apply_history_entry_reverse(state: &mut EditorState, entry: &HistoryEntry) {
+    match entry {
+        HistoryEntry::Single(change) => apply_change_reverse(state, change),
+        HistoryEntry::Batch {
+            changes,
+            cursor_before,
+            ..
+        } => {
+            for change in changes.iter().rev() {
+                state
+                    .buffer
+                    .apply_change(change.start, &change.new_text, &change.old_text);
+            }
+            state.cursor = *cursor_before;
+            clamp_cursor_to_buffer(state);
+            sync_search_results_after_buffer_change(state);
+        }
+    }
+}
+
 fn apply_change_forward(state: &mut EditorState, change: &TextChange) {
     state
         .buffer
@@ -964,30 +1024,6 @@ fn move_cursor_to_search_match(state: &mut EditorState) {
 
 fn current_search_match(state: &EditorState) -> Option<SearchMatch> {
     state.search_results.get(state.search_result_idx).copied()
-}
-
-fn build_replace_all_text(
-    buffer: &TextBuffer,
-    matches: &[SearchMatch],
-    replacement: &str,
-) -> String {
-    let mut full_text = buffer.full_text();
-    let mut absolute_ranges: Vec<(usize, usize)> = matches
-        .iter()
-        .map(|found| {
-            (
-                buffer.absolute_offset(found.row, found.start),
-                buffer.absolute_offset(found.row, found.end),
-            )
-        })
-        .collect();
-    absolute_ranges.sort_by(|a, b| b.0.cmp(&a.0));
-
-    for (start, end) in absolute_ranges {
-        full_text.replace_range(start..end, replacement);
-    }
-
-    full_text
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────
@@ -1203,18 +1239,7 @@ fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState)
 
     let rel_col = (screen_col - state.editor_area_left) as usize;
     let line = state.buffer.line(buf_row);
-
-    // Walk graphemes to find the byte offset that corresponds to rel_col display columns.
-    let mut display = 0usize;
-    let mut byte_pos = line.len(); // default = end of line
-    for (idx, ch) in line.char_indices() {
-        if display >= rel_col {
-            byte_pos = idx;
-            break;
-        }
-        display += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
-    }
-    byte_pos = byte_pos.min(line.len());
+    let byte_pos = byte_for_display_col(line, rel_col).min(line.len());
 
     state.cursor.row = buf_row;
     state.cursor.col = byte_pos;
@@ -1224,38 +1249,36 @@ fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState)
 
 /// Move one word to the left: skip whitespace left, then skip non-whitespace left.
 /// Crosses line boundaries when the cursor is at column 0.
-fn word_left_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
-    if lines.is_empty() {
+fn word_left_pos(buffer: &TextBuffer, row: usize, col: usize) -> (usize, usize) {
+    if buffer.line_count() == 0 {
         return (0, 0);
     }
-    let row = row.min(lines.len().saturating_sub(1));
-    let col = crate::editor::buffer::clamp_char_boundary(&lines[row], col);
+    let row = row.min(buffer.line_count().saturating_sub(1));
+    let col = buffer.clamp_column(row, col);
     if col == 0 {
         if row == 0 {
             return (0, 0);
         }
         let prev_row = row - 1;
-        let prev_len = lines[prev_row].len();
+        let prev_len = buffer.line(prev_row).len();
         if prev_len == 0 {
             return (prev_row, 0);
         }
-        return word_left_pos(lines, prev_row, prev_len);
+        return word_left_pos(buffer, prev_row, prev_len);
     }
-    let line = &lines[row];
+    let line = buffer.line(row);
     let mut pos = col;
-    // Skip whitespace left
     while pos > 0 {
-        let prev = prev_char_boundary(line, pos);
-        if line[prev..pos].chars().next().is_some_and(|c| c.is_whitespace()) {
+        let prev = prev_grapheme_boundary(line, pos);
+        if grapheme_slice(line, prev, pos).chars().all(char::is_whitespace) {
             pos = prev;
         } else {
             break;
         }
     }
-    // Skip non-whitespace left
     while pos > 0 {
-        let prev = prev_char_boundary(line, pos);
-        if line[prev..pos].chars().next().is_some_and(|c| c.is_whitespace()) {
+        let prev = prev_grapheme_boundary(line, pos);
+        if grapheme_slice(line, prev, pos).chars().all(char::is_whitespace) {
             break;
         }
         pos = prev;
@@ -1265,33 +1288,33 @@ fn word_left_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
 
 /// Move one word to the right: skip non-whitespace right, then skip whitespace right.
 /// Crosses line boundaries when the cursor is at end of line.
-fn word_right_pos(lines: &[String], row: usize, col: usize) -> (usize, usize) {
-    if lines.is_empty() {
+fn word_right_pos(buffer: &TextBuffer, row: usize, col: usize) -> (usize, usize) {
+    if buffer.line_count() == 0 {
         return (0, 0);
     }
-    let row = row.min(lines.len().saturating_sub(1));
-    let line = &lines[row];
-    let col = crate::editor::buffer::clamp_char_boundary(line, col);
+    let row = row.min(buffer.line_count().saturating_sub(1));
+    let line = buffer.line(row);
+    let col = buffer.clamp_column(row, col);
     if col >= line.len() {
-        if row + 1 >= lines.len() {
+        if row + 1 >= buffer.line_count() {
             return (row, col);
         }
         return (row + 1, 0);
     }
     let mut pos = col;
-    // Skip non-whitespace right
     while pos < line.len() {
-        if line[pos..].chars().next().is_some_and(|c| c.is_whitespace()) {
+        let next = next_grapheme_boundary(line, pos);
+        if grapheme_slice(line, pos, next).chars().all(char::is_whitespace) {
             break;
         }
-        pos = next_char_boundary(line, pos);
+        pos = next;
     }
-    // Skip whitespace right
     while pos < line.len() {
-        if line[pos..].chars().next().is_some_and(|c| !c.is_whitespace()) {
+        let next = next_grapheme_boundary(line, pos);
+        if !grapheme_slice(line, pos, next).chars().all(char::is_whitespace) {
             break;
         }
-        pos = next_char_boundary(line, pos);
+        pos = next;
     }
     (row, pos)
 }
@@ -1349,11 +1372,7 @@ mod tests {
 
     fn state_with_lines(lines: &[&str]) -> EditorState {
         let mut state = EditorState::new_empty();
-        state.buffer = TextBuffer {
-            lines: lines.iter().map(|line| line.to_string()).collect(),
-            dirty: false,
-            file_path: None,
-        };
+        state.buffer = TextBuffer::from_lines(lines.iter().map(|line| line.to_string()).collect());
         state.config = EditorConfig::default();
         state.editor_area_left = 2;
         state.editor_area_top = 1;
@@ -1476,6 +1495,20 @@ mod tests {
     }
 
     #[test]
+    fn replace_all_is_undoable_as_one_batch() {
+        let mut state = state_with_lines(&["alpha beta alpha"]);
+        state.search_query = "alpha".to_string();
+        state.search_results = crate::editor::search::find_all(&state.buffer.lines, "alpha", true);
+        state.replace_query = "x".to_string();
+
+        apply_action(&mut state, AppAction::ReplaceAll).expect("replace all");
+        assert_eq!(state.buffer.lines, vec!["x beta x".to_string()]);
+
+        apply_action(&mut state, AppAction::Undo).expect("undo");
+        assert_eq!(state.buffer.lines, vec!["alpha beta alpha".to_string()]);
+    }
+
+    #[test]
     fn insert_newline_clamps_invalid_utf8_cursor_before_slicing_indent() {
         let mut state = state_with_lines(&["ąż test"]);
         state.cursor = Cursor { row: 0, col: 1 };
@@ -1486,71 +1519,85 @@ mod tests {
         assert_eq!(state.buffer.lines, vec!["".to_string(), "ąż test".to_string()]);
     }
 
+    #[test]
+    fn delete_before_removes_whole_grapheme_cluster() {
+        let mut state = state_with_lines(&["A👨‍👩‍👧‍👦B"]);
+        state.cursor = Cursor {
+            row: 0,
+            col: "A👨‍👩‍👧‍👦".len(),
+        };
+
+        apply_action(&mut state, AppAction::DeleteBefore).expect("delete before");
+
+        assert_eq!(state.buffer.lines, vec!["AB".to_string()]);
+        assert_eq!(state.cursor, Cursor { row: 0, col: 1 });
+    }
+
     // ── Word navigation helpers ───────────────────────────────────────────
 
-    fn lines(v: &[&str]) -> Vec<String> {
-        v.iter().map(|s| s.to_string()).collect()
+    fn buffer(v: &[&str]) -> TextBuffer {
+        TextBuffer::from_lines(v.iter().map(|s| s.to_string()).collect())
     }
 
     #[test]
     fn word_left_from_middle_of_word() {
         // "hello world" — cursor at 'r' of "world" (col 8) → start of "world" (col 6)
-        let ls = lines(&["hello world"]);
-        assert_eq!(word_left_pos(&ls, 0, 8), (0, 6));
+        let buffer = buffer(&["hello world"]);
+        assert_eq!(word_left_pos(&buffer, 0, 8), (0, 6));
     }
 
     #[test]
     fn word_left_from_start_of_word_skips_to_prev() {
         // cursor at 'w' (col 6) → start of "hello" (col 0)
-        let ls = lines(&["hello world"]);
-        assert_eq!(word_left_pos(&ls, 0, 6), (0, 0));
+        let buffer = buffer(&["hello world"]);
+        assert_eq!(word_left_pos(&buffer, 0, 6), (0, 0));
     }
 
     #[test]
     fn word_left_at_buffer_start_stays() {
-        let ls = lines(&["hello"]);
-        assert_eq!(word_left_pos(&ls, 0, 0), (0, 0));
+        let buffer = buffer(&["hello"]);
+        assert_eq!(word_left_pos(&buffer, 0, 0), (0, 0));
     }
 
     #[test]
     fn word_left_crosses_line_boundary() {
         // line 0: "hello", line 1: "" cursor col 0 → (0, 0) because prev line is empty
-        let ls = lines(&["hello", ""]);
-        assert_eq!(word_left_pos(&ls, 1, 0), (0, 0));
+        let buffer = buffer(&["hello", ""]);
+        assert_eq!(word_left_pos(&buffer, 1, 0), (0, 0));
     }
 
     #[test]
     fn word_left_crosses_line_boundary_to_word() {
         // line 0: "hello world", line 1: cursor col 0 → start of "world" on line 0
-        let ls = lines(&["hello world", "next"]);
-        assert_eq!(word_left_pos(&ls, 1, 0), (0, 6));
+        let buffer = buffer(&["hello world", "next"]);
+        assert_eq!(word_left_pos(&buffer, 1, 0), (0, 6));
     }
 
     #[test]
     fn word_right_from_middle_of_word() {
         // "hello world" — cursor at 'e' (col 1) → start of "world" (col 6)
-        let ls = lines(&["hello world"]);
-        assert_eq!(word_right_pos(&ls, 0, 1), (0, 6));
+        let buffer = buffer(&["hello world"]);
+        assert_eq!(word_right_pos(&buffer, 0, 1), (0, 6));
     }
 
     #[test]
     fn word_right_from_whitespace() {
         // cursor at space (col 5) → start of "world" (col 6)
-        let ls = lines(&["hello world"]);
-        assert_eq!(word_right_pos(&ls, 0, 5), (0, 6));
+        let buffer = buffer(&["hello world"]);
+        assert_eq!(word_right_pos(&buffer, 0, 5), (0, 6));
     }
 
     #[test]
     fn word_right_at_end_of_line_crosses_boundary() {
         // cursor at end of line 0 → (1, 0)
-        let ls = lines(&["hello", "world"]);
-        assert_eq!(word_right_pos(&ls, 0, 5), (1, 0));
+        let buffer = buffer(&["hello", "world"]);
+        assert_eq!(word_right_pos(&buffer, 0, 5), (1, 0));
     }
 
     #[test]
     fn word_right_at_buffer_end_stays() {
-        let ls = lines(&["hello"]);
-        assert_eq!(word_right_pos(&ls, 0, 5), (0, 5));
+        let buffer = buffer(&["hello"]);
+        assert_eq!(word_right_pos(&buffer, 0, 5), (0, 5));
     }
 
     // ── Word navigation actions ───────────────────────────────────────────
@@ -1746,6 +1793,30 @@ mod tests {
         .expect("mouse event");
 
         assert_eq!(state.cursor, Cursor { row: 0, col: 2 });
+    }
+
+    #[test]
+    fn mouse_click_on_wide_grapheme_uses_grapheme_boundaries() {
+        let mut state = state_with_lines(&["A👨‍👩‍👧‍👦B"]);
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse event");
+
+        assert_eq!(
+            state.cursor,
+            Cursor {
+                row: 0,
+                col: "A👨‍👩‍👧‍👦".len(),
+            }
+        );
     }
 
     #[test]
