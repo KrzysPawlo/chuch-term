@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const DISPLAY_CONFIG_PATH: &str = "~/.config/chuch-term/config.toml";
 
@@ -23,6 +23,18 @@ indent_errors = false
 [clipboard]
 # "auto" = detect system clipboard, "internal" = never use system clipboard, "osc52" = force OSC-52
 strategy = "auto"
+
+[shortcuts]
+# "ctrl" = modern default, "alt" = alternate modifier-first profile
+profile = "ctrl"
+
+[shortcuts.overrides]
+# settings = "comma"
+# help = "b"
+
+[command]
+# Optional personal alias installed into ~/.local/bin via Settings -> Install alias
+alias = ""
 
 [render]
 # "auto" = stable default, "rgb" = force 24-bit colours, "ansi256" = force 256-colour fallback
@@ -144,14 +156,14 @@ impl ThemeSection {
 /// Falls back to the provided defaults when the string is malformed.
 fn parse_hex_rgb(s: &str, r: u8, g: u8, b: u8) -> (u8, u8, u8) {
     let s = s.trim().trim_start_matches('#');
-    if s.len() == 6 {
-        if let (Ok(rv), Ok(gv), Ok(bv)) = (
+    if s.len() == 6
+        && let (Ok(rv), Ok(gv), Ok(bv)) = (
             u8::from_str_radix(&s[0..2], 16),
             u8::from_str_radix(&s[2..4], 16),
             u8::from_str_radix(&s[4..6], 16),
-        ) {
-            return (rv, gv, bv);
-        }
+        )
+    {
+        return (rv, gv, bv);
     }
     (r, g, b)
 }
@@ -172,11 +184,29 @@ impl Default for ClipboardSection {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ShortcutsSection {
+    #[serde(default)]
+    pub profile: crate::shortcuts::ShortcutProfile,
+    #[serde(default)]
+    pub overrides: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CommandSection {
+    #[serde(default)]
+    pub alias: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EditorConfig {
     #[serde(default)]
     pub editor: EditorSection,
     #[serde(default)]
     pub clipboard: ClipboardSection,
+    #[serde(default)]
+    pub shortcuts: ShortcutsSection,
+    #[serde(default)]
+    pub command: CommandSection,
     #[serde(default)]
     pub render: RenderSection,
     #[serde(default)]
@@ -225,10 +255,10 @@ pub fn load_existing_config() -> (Option<EditorConfig>, Option<String>) {
 
     match std::fs::read_to_string(&path) {
         Ok(content) => match toml::from_str::<EditorConfig>(&content) {
-            Ok(cfg) => {
-                let (cfg, warn) = validate_config(cfg);
-                (Some(cfg), warn)
-            }
+            Ok(cfg) => match validate_config(cfg) {
+                Ok((cfg, warn)) => (Some(cfg), warn),
+                Err(err) => (None, Some(err)),
+            },
             Err(err) => (
                 None,
                 Some(format!("Config parse error: {err}")),
@@ -262,10 +292,10 @@ pub fn load_config_from_path(path: &Path) -> (EditorConfig, Option<String>) {
 
     match std::fs::read_to_string(path) {
         Ok(content) => match toml::from_str::<EditorConfig>(&content) {
-            Ok(cfg) => {
-                let (cfg, warn) = validate_config(cfg);
-                (cfg, warn)
-            }
+            Ok(cfg) => match validate_config(cfg) {
+                Ok((cfg, warn)) => (cfg, warn),
+                Err(err) => (EditorConfig::default(), Some(err)),
+            },
             Err(err) => (
                 EditorConfig::default(),
                 Some(format!("Config parse error: {err}")),
@@ -286,6 +316,9 @@ pub fn config_mtime() -> Option<SystemTime> {
 /// Overwrites the file with clean TOML — comments from the original file are not preserved.
 pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
     use anyhow::Context as _;
+    validate_config(config.clone())
+        .map_err(anyhow::Error::msg)
+        .context("Cannot save invalid config")?;
     let path = config_path()
         .context("Cannot determine config path")?;
     if let Some(parent) = path.parent() {
@@ -294,12 +327,24 @@ pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
     }
     let content = toml::to_string_pretty(config)
         .context("Cannot serialise config")?;
-    std::fs::write(&path, content)
-        .with_context(|| format!("Cannot write config: {}", path.display()))?;
+    let mut tmp_path = path.clone();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config.toml");
+    tmp_path.set_file_name(format!(".{file_name}.tmp-{}-{nanos}", std::process::id()));
+    std::fs::write(&tmp_path, content)
+        .with_context(|| format!("Cannot write temp config: {}", tmp_path.display()))?;
+    std::fs::rename(&tmp_path, &path)
+        .with_context(|| format!("Cannot replace config atomically: {}", path.display()))?;
     Ok(())
 }
 
-fn validate_config(mut cfg: EditorConfig) -> (EditorConfig, Option<String>) {
+fn validate_config(mut cfg: EditorConfig) -> Result<(EditorConfig, Option<String>), String> {
     let mut warnings = Vec::new();
     const VALID_STRATEGIES: &[&str] = &["auto", "internal", "osc52"];
     if !VALID_STRATEGIES.contains(&cfg.clipboard.strategy.as_str()) {
@@ -317,12 +362,16 @@ fn validate_config(mut cfg: EditorConfig) -> (EditorConfig, Option<String>) {
     }
     // Clamp tab_width to a sensible range.
     cfg.editor.tab_width = cfg.editor.tab_width.clamp(1, 8);
+    crate::shortcuts::ActiveShortcuts::resolve(&cfg.shortcuts)
+        .map_err(|errors| errors.join("; "))?;
+    crate::command_alias::validate_command_section(&cfg.command)
+        .map_err(|err| err.to_string())?;
     let warning = if warnings.is_empty() {
         None
     } else {
         Some(warnings.join("; "))
     };
-    (cfg, warning)
+    Ok((cfg, warning))
 }
 
 fn create_default_config(path: &Path) -> std::io::Result<bool> {
@@ -348,6 +397,16 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    fn set_env_var(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+        // Tests serialize environment mutation through env_lock().
+        unsafe { std::env::set_var(key, value) }
+    }
+
+    fn remove_env_var(key: &str) {
+        // Tests serialize environment mutation through env_lock().
+        unsafe { std::env::remove_var(key) }
+    }
+
     fn temp_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -371,8 +430,12 @@ mod tests {
         assert!(content.contains("tab_width"));    // valid field in DEFAULT_CONFIG_CONTENT
         assert!(content.contains("[render]"));
         assert!(content.contains("color_mode = \"auto\""));
+        assert!(content.contains("[shortcuts]"));
+        assert!(content.contains("profile = \"ctrl\""));
         assert!(content.contains("[theme]"));      // theme section is now present
         assert!(content.contains("accent"));
+        assert!(content.contains("[command]"));
+        assert!(content.contains("alias = \"\""));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -507,8 +570,8 @@ color_mode = "neon"
         let previous_home = std::env::var_os("HOME");
         let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
         std::fs::create_dir_all(&root).expect("temp dir");
-        std::env::set_var("HOME", &root);
-        std::env::remove_var("XDG_CONFIG_HOME");
+        set_env_var("HOME", &root);
+        remove_env_var("XDG_CONFIG_HOME");
 
         let path = config_path().expect("config path");
         assert!(!path.exists());
@@ -519,14 +582,110 @@ color_mode = "neon"
         assert!(!path.exists());
 
         if let Some(home) = previous_home {
-            std::env::set_var("HOME", home);
+            set_env_var("HOME", home);
         } else {
-            std::env::remove_var("HOME");
+            remove_env_var("HOME");
         }
         if let Some(xdg) = previous_xdg {
-            std::env::set_var("XDG_CONFIG_HOME", xdg);
+            set_env_var("XDG_CONFIG_HOME", xdg);
         } else {
-            std::env::remove_var("XDG_CONFIG_HOME");
+            remove_env_var("XDG_CONFIG_HOME");
+        }
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_shortcut_override_falls_back_to_defaults() {
+        let root = temp_path("shortcut-mode");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        let path = root.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[shortcuts]
+profile = "ctrl"
+
+[shortcuts.overrides]
+save = "tab"
+"#,
+        )
+        .expect("shortcut config write");
+
+        let (config, warning) = load_config_from_path(&path);
+
+        assert_eq!(config.shortcuts.profile, crate::shortcuts::ShortcutProfile::Ctrl);
+        assert!(config.shortcuts.overrides.is_empty());
+        assert!(
+            warning
+                .expect("shortcut warning")
+                .contains("unsupported key token")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_command_alias_falls_back_to_defaults_on_startup() {
+        let root = temp_path("alias-invalid");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        let path = root.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[command]
+alias = "plik.txt"
+"#,
+        )
+        .expect("alias config write");
+
+        let (config, warning) = load_config_from_path(&path);
+
+        assert!(config.command.alias.is_empty());
+        assert!(
+            warning
+                .expect("alias warning")
+                .contains("command.alias")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn invalid_existing_command_alias_does_not_return_runtime_config() {
+        let _guard = env_lock().lock().expect("env test mutex");
+        let root = temp_path("alias-existing");
+        let previous_home = std::env::var_os("HOME");
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        set_env_var("HOME", &root);
+        remove_env_var("XDG_CONFIG_HOME");
+        let path = config_path().expect("config path");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("config parent");
+        }
+        std::fs::write(
+            &path,
+            r#"
+[command]
+alias = "bad.alias"
+"#,
+        )
+        .expect("write config");
+
+        let (config, warning) = load_existing_config();
+        assert!(config.is_none());
+        assert!(warning.expect("warning").contains("command.alias"));
+
+        if let Some(home) = previous_home {
+            set_env_var("HOME", home);
+        } else {
+            remove_env_var("HOME");
+        }
+        if let Some(xdg) = previous_xdg {
+            set_env_var("XDG_CONFIG_HOME", xdg);
+        } else {
+            remove_env_var("XDG_CONFIG_HOME");
         }
 
         let _ = std::fs::remove_dir_all(root);

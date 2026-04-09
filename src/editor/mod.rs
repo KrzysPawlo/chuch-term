@@ -33,6 +33,10 @@ pub enum EditorMode {
     SaveAs,
     /// Interactive settings panel.
     Settings,
+    /// Dedicated shortcut customization overlay.
+    Keybindings,
+    /// Dedicated command-alias editor overlay.
+    CommandAlias,
 }
 
 /// Line number display mode.
@@ -84,6 +88,12 @@ pub struct EditorState {
     // ── Settings overlay ─────────────────────────────────────────────────
     /// Index of the currently selected row in the Settings overlay.
     pub settings_cursor: usize,
+    /// Index of the currently selected shortcut in the keybindings overlay.
+    pub keybindings_cursor: usize,
+    /// True while waiting for a new key token in the keybindings overlay.
+    pub keybinding_capture: bool,
+    /// Draft text while editing the optional managed command alias.
+    pub command_alias_input: String,
 
     // ── Mouse / layout ───────────────────────────────────────────────────
     /// Left edge of the editor area in terminal columns (updated every frame).
@@ -102,6 +112,7 @@ pub struct EditorState {
 
     // ── Config ───────────────────────────────────────────────────────────
     pub config: crate::config::EditorConfig,
+    pub active_shortcuts: crate::shortcuts::ActiveShortcuts,
     pub render_decision: crate::color::RenderDecision,
     pub palette: crate::color::Palette,
     pub config_mtime: Option<std::time::SystemTime>,
@@ -134,6 +145,8 @@ impl EditorState {
         let line_number_mode = Self::line_number_mode_for(&config);
         let config_mtime = crate::config::config_mtime();
         let (render_decision, palette) = Self::resolve_rendering(&config);
+        let active_shortcuts = crate::shortcuts::ActiveShortcuts::resolve(&config.shortcuts)
+            .expect("validated config should resolve active shortcuts");
 
         Self {
             buffer,
@@ -156,6 +169,9 @@ impl EditorState {
             goto_input: String::new(),
             saveas_input: String::new(),
             settings_cursor: 0,
+            keybindings_cursor: 0,
+            keybinding_capture: false,
+            command_alias_input: String::new(),
             editor_area_left: 0,
             editor_area_top: 0,
             editor_area_right: 0,
@@ -164,6 +180,7 @@ impl EditorState {
             palette_matches: (0..crate::commands::COMMANDS.len()).collect(),
             palette_cursor: 0,
             config,
+            active_shortcuts,
             render_decision,
             palette,
             config_mtime,
@@ -192,10 +209,19 @@ impl EditorState {
 
     pub fn apply_config(&mut self, config: crate::config::EditorConfig) {
         let (render_decision, palette) = Self::resolve_rendering(&config);
+        let active_shortcuts = crate::shortcuts::ActiveShortcuts::resolve(&config.shortcuts)
+            .expect("validated config should resolve active shortcuts");
         self.line_number_mode = Self::line_number_mode_for(&config);
         self.config = config;
+        self.active_shortcuts = active_shortcuts;
         self.render_decision = render_decision;
         self.palette = palette;
+    }
+
+    pub fn selected_keybinding_action(&self) -> Option<crate::shortcuts::ShortcutAction> {
+        crate::shortcuts::configurable_actions()
+            .get(self.keybindings_cursor)
+            .copied()
     }
 
     /// Display name for the status bar (filename or "[New File]").

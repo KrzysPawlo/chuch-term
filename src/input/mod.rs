@@ -8,6 +8,7 @@ use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use crate::editor::buffer::{next_char_boundary, prev_char_boundary};
 use crate::editor::history::TextChange;
 use crate::editor::{Cursor, EditorMode, EditorState, LineNumberMode, SearchMatch, TextBuffer};
+use crate::shortcuts::{ActiveShortcuts, KeyToken, ShortcutAction, ShortcutProfile};
 
 /// Translate a crossterm Event into an AppAction and apply it to the editor state.
 pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
@@ -16,7 +17,7 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
             if key_event.kind != KeyEventKind::Press {
                 return Ok(());
             }
-            map_key(key_event, state.mode)
+            map_key(key_event, state)
         }
         Event::Resize(_, _) => return Ok(()),
         Event::Mouse(mouse_event) => {
@@ -499,10 +500,10 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         PaletteSubmit => {
             let idx = state.palette_matches.get(state.palette_cursor).copied();
             state.mode = EditorMode::Normal;
-            if let Some(command_index) = idx {
-                if let Some(command) = crate::commands::COMMANDS.get(command_index) {
-                    return apply_action(state, command.action.clone());
-                }
+            if let Some(command_index) = idx
+                && let Some(command) = crate::commands::COMMANDS.get(command_index)
+            {
+                return apply_action(state, command.action);
             }
         }
 
@@ -731,13 +732,17 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         // ── Settings overlay ──────────────────────────────────────────
         OpenSettings => {
             state.settings_cursor = 0;
+            state.keybinding_capture = false;
+            state.command_alias_input.clear();
             state.mode = EditorMode::Settings;
         }
 
         CloseSettings => {
-            state.mode = EditorMode::Normal;
             if let Err(e) = crate::config::save_config(&state.config) {
                 state.status_message = Some(format!("Settings save error: {e}"));
+            } else {
+                state.mode = EditorMode::Normal;
+                state.status_message = Some("Settings saved.".to_string());
             }
         }
 
@@ -751,11 +756,77 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
         }
 
         SettingsToggle => {
-            toggle_setting(state, 0);
+            apply_settings_action(state, 0);
         }
 
         SettingsAdjust(delta) => {
-            toggle_setting(state, delta);
+            apply_settings_action(state, delta);
+        }
+
+        CloseKeybindings => {
+            state.keybinding_capture = false;
+            state.mode = EditorMode::Settings;
+        }
+
+        KeybindingsUp => {
+            state.keybindings_cursor = state.keybindings_cursor.saturating_sub(1);
+        }
+
+        KeybindingsDown => {
+            let max = crate::shortcuts::configurable_actions().len().saturating_sub(1);
+            state.keybindings_cursor = (state.keybindings_cursor + 1).min(max);
+        }
+
+        StartKeybindingCapture => {
+            state.keybinding_capture = true;
+            if let Some(action) = state.selected_keybinding_action() {
+                state.status_message = Some(format!(
+                    "Press a supported key token for {}",
+                    action.name()
+                ));
+            }
+        }
+
+        CancelKeybindingCapture => {
+            state.keybinding_capture = false;
+            state.status_message = Some("Shortcut capture cancelled.".to_string());
+        }
+
+        CaptureKeyToken(token) => {
+            state.keybinding_capture = false;
+            assign_selected_shortcut(state, token);
+        }
+
+        ResetSelectedKeybinding => {
+            reset_selected_shortcut(state);
+        }
+
+        ResetShortcutOverrides => {
+            try_update_shortcuts_config(state, |shortcuts| {
+                shortcuts.overrides.clear();
+            });
+            state.status_message = Some(format!(
+                "Shortcut overrides cleared. Active profile: {}.",
+                state.active_shortcuts.profile().name()
+            ));
+        }
+
+        CloseCommandAlias => {
+            state.command_alias_input.clear();
+            state.mode = EditorMode::Settings;
+            state.status_message = Some("Command alias edit cancelled.".to_string());
+        }
+
+        CommandAliasChar(c) => {
+            state.command_alias_input.push(c);
+        }
+
+        CommandAliasBackspace => {
+            state.command_alias_input.pop();
+        }
+
+        CommandAliasSubmit => {
+            submit_command_alias(state);
         }
     }
 
@@ -922,8 +993,8 @@ fn build_replace_all_text(
 // ── Settings helpers ───────────────────────────────────────────────────
 
 /// Toggle or adjust the setting at `state.settings_cursor`.
-/// `delta == 0` → toggle bool; `delta == ±1` → adjust numeric/cycle enum.
-fn toggle_setting(state: &mut EditorState, delta: i8) {
+/// `delta == 0` → toggle bool/open action; `delta == ±1` → adjust numeric/cycle enum.
+fn apply_settings_action(state: &mut EditorState, delta: i8) {
     match state.settings_cursor {
         0 => state.config.editor.line_numbers = !state.config.editor.line_numbers,
         1 => state.config.editor.relative_numbers = !state.config.editor.relative_numbers,
@@ -945,10 +1016,173 @@ fn toggle_setting(state: &mut EditorState, delta: i8) {
             let next = ((cur as i16 + delta as i16).rem_euclid(STRATEGIES.len() as i16)) as usize;
             state.config.clipboard.strategy = STRATEGIES[next].to_string();
         }
+        9 if delta != 0 => {
+            let previous = state.active_shortcuts.profile();
+            let next_profile = match state.config.shortcuts.profile {
+                ShortcutProfile::Ctrl => ShortcutProfile::Alt,
+                ShortcutProfile::Alt => ShortcutProfile::Ctrl,
+            };
+            try_update_shortcuts_config(state, |shortcuts| {
+                shortcuts.profile = next_profile;
+            });
+            if state.active_shortcuts.profile() != previous {
+                state.status_message = Some(format!(
+                    "Shortcut profile switched to {}.",
+                    state.active_shortcuts.profile().name()
+                ));
+            }
+            return;
+        }
+        10 if delta == 0 => {
+            state.mode = EditorMode::Keybindings;
+            state.keybindings_cursor = 0;
+            state.keybinding_capture = false;
+            state.status_message = Some("Customize shortcuts in the overlay.".to_string());
+            return;
+        }
+        11 if delta == 0 => {
+            try_update_shortcuts_config(state, |shortcuts| {
+                shortcuts.overrides.clear();
+            });
+            state.status_message = Some(format!(
+                "Shortcut overrides reset for {} profile.",
+                state.active_shortcuts.profile().name()
+            ));
+            return;
+        }
+        12 if delta == 0 => {
+            state.command_alias_input = state.config.command.alias.clone();
+            state.mode = EditorMode::CommandAlias;
+            state.status_message = Some("Edit your personal command alias.".to_string());
+            return;
+        }
+        13 if delta == 0 => {
+            let current_exe = match std::env::current_exe() {
+                Ok(path) => path,
+                Err(err) => {
+                    state.status_message = Some(format!("Alias install error: {err}"));
+                    return;
+                }
+            };
+            match crate::command_alias::install_alias(&state.config.command, &current_exe) {
+                Ok(message) => state.status_message = Some(message),
+                Err(err) => state.status_message = Some(format!("Alias install error: {err}")),
+            }
+            return;
+        }
+        14 if delta == 0 => {
+            let current_exe = match std::env::current_exe() {
+                Ok(path) => path,
+                Err(err) => {
+                    state.status_message = Some(format!("Alias remove error: {err}"));
+                    return;
+                }
+            };
+            match crate::command_alias::remove_alias(&state.config.command, &current_exe) {
+                Ok(message) => state.status_message = Some(message),
+                Err(err) => state.status_message = Some(format!("Alias remove error: {err}")),
+            }
+            return;
+        }
         _ => {}
     }
     // Apply line-number mode immediately (matches apply_config behaviour).
     state.line_number_mode = crate::editor::EditorState::line_number_mode_for(&state.config);
+}
+
+fn submit_command_alias(state: &mut EditorState) {
+    let candidate = state.command_alias_input.trim().to_string();
+    match try_update_command_alias_config(state, candidate.clone()) {
+        Ok(()) => {
+            state.command_alias_input.clear();
+            state.mode = EditorMode::Settings;
+            state.status_message = if candidate.is_empty() {
+                Some("Command alias cleared.".to_string())
+            } else {
+                Some(format!("Command alias set to '{candidate}'. Install it from Settings when ready."))
+            };
+        }
+        Err(err) => {
+            state.status_message = Some(err);
+        }
+    }
+}
+
+fn assign_selected_shortcut(state: &mut EditorState, token: KeyToken) {
+    let Some(action) = state.selected_keybinding_action() else {
+        return;
+    };
+
+    if !action.accepts_token(token) {
+        state.status_message = Some(format!(
+            "{} only accepts {}.",
+            action.name(),
+            shortcut_policy_hint(action),
+        ));
+        return;
+    }
+
+    let action_id = action.id().to_string();
+    let token_value = token.config_value();
+    try_update_shortcuts_config(state, |shortcuts| {
+        shortcuts.overrides.insert(action_id.clone(), token_value.clone());
+    });
+    state.status_message = Some(format!(
+        "{} → {}",
+        action.name(),
+        state.active_shortcuts.label_for(action, crate::shortcuts::LabelStyle::Long),
+    ));
+}
+
+fn reset_selected_shortcut(state: &mut EditorState) {
+    let Some(action) = state.selected_keybinding_action() else {
+        return;
+    };
+    let removed = state
+        .config
+        .shortcuts
+        .overrides
+        .contains_key(action.id());
+    try_update_shortcuts_config(state, |shortcuts| {
+        shortcuts.overrides.remove(action.id());
+    });
+    if removed {
+        state.status_message = Some(format!("Reset {} to profile default.", action.name()));
+    } else {
+        state.status_message = Some(format!("{} already uses the profile default.", action.name()));
+    }
+}
+
+fn try_update_shortcuts_config<F>(state: &mut EditorState, mut mutate: F)
+where
+    F: FnMut(&mut crate::config::ShortcutsSection),
+{
+    let mut candidate = state.config.clone();
+    mutate(&mut candidate.shortcuts);
+
+    match ActiveShortcuts::resolve(&candidate.shortcuts) {
+        Ok(_) => state.apply_config(candidate),
+        Err(errors) => {
+            state.status_message = Some(errors.join("; "));
+        }
+    }
+}
+
+fn try_update_command_alias_config(state: &mut EditorState, alias: String) -> std::result::Result<(), String> {
+    let mut candidate = state.config.clone();
+    candidate.command.alias = alias;
+    crate::command_alias::validate_command_section(&candidate.command)
+        .map_err(|err| err.to_string())?;
+    state.apply_config(candidate);
+    Ok(())
+}
+
+fn shortcut_policy_hint(action: ShortcutAction) -> &'static str {
+    match action {
+        ShortcutAction::DeleteWordAfter => "Delete",
+        ShortcutAction::WordLeft | ShortcutAction::WordRight => "Left or Right",
+        _ => "a-z or comma",
+    }
 }
 
 // ── Mouse helpers ──────────────────────────────────────────────────────
@@ -1528,6 +1762,29 @@ mod tests {
         .expect("ctrl+t");
 
         assert_eq!(state.mode, EditorMode::Settings);
+    }
+
+    #[test]
+    fn settings_open_command_alias_overlay() {
+        let mut state = state_with_lines(&["hello"]);
+        state.mode = EditorMode::Settings;
+        state.settings_cursor = 12;
+
+        apply_action(&mut state, AppAction::SettingsToggle).expect("open alias overlay");
+
+        assert_eq!(state.mode, EditorMode::CommandAlias);
+    }
+
+    #[test]
+    fn command_alias_submit_updates_config() {
+        let mut state = state_with_lines(&["hello"]);
+        state.mode = EditorMode::CommandAlias;
+        state.command_alias_input = "cct".to_string();
+
+        apply_action(&mut state, AppAction::CommandAliasSubmit).expect("submit alias");
+
+        assert_eq!(state.mode, EditorMode::Settings);
+        assert_eq!(state.config.command.alias, "cct");
     }
 
     #[test]

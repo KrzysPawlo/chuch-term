@@ -1,16 +1,18 @@
 mod app;
 mod clipboard;
 mod color;
+mod command_alias;
 mod commands;
 mod config;
 mod editor;
 mod input;
+mod shortcuts;
 mod syntax;
 mod ui;
 
 use std::path::PathBuf;
 use std::fmt::Write as _;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use anyhow::Result;
 
 /// chuch-term — a minimal, beautiful terminal text editor.
@@ -30,7 +32,8 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let invoked_name = crate::command_alias::invoked_command_name();
+    let args = parse_args(&invoked_name);
     if args.uninstall {
         return uninstall();
     }
@@ -39,6 +42,18 @@ fn main() -> Result<()> {
         return Ok(());
     }
     app::run(args.file)
+}
+
+fn parse_args(bin_name: &str) -> Args {
+    let mut command = Args::command();
+    command = command.bin_name(bin_name);
+    match command.try_get_matches() {
+        Ok(matches) => match Args::from_arg_matches(&matches) {
+            Ok(args) => args,
+            Err(err) => err.exit(),
+        },
+        Err(err) => err.exit(),
+    }
 }
 
 fn print_debug_env() {
@@ -161,20 +176,26 @@ fn format_debug_env_report(report: &DebugEnvReport) -> String {
 }
 
 fn uninstall() -> Result<()> {
+    let current_exe = std::env::current_exe()?;
+    let (existing_config, _) = config::load_existing_config();
+    if let Some(config) = existing_config.as_ref()
+        && let Some(message) = crate::command_alias::cleanup_uninstall_alias(&config.command, &current_exe)?
+    {
+        println!("{message}");
+    }
+
     // Config directory: ~/.config/chuch-term/
-    if let Some(config_file) = config::config_path() {
-        if let Some(config_dir) = config_file.parent() {
-            if config_dir.exists() {
-                std::fs::remove_dir_all(config_dir)?;
-                println!("Removed config: {}", config_dir.display());
-            }
-        }
+    if let Some(config_file) = config::config_path()
+        && let Some(config_dir) = config_file.parent()
+        && config_dir.exists()
+    {
+        std::fs::remove_dir_all(config_dir)?;
+        println!("Removed config: {}", config_dir.display());
     }
 
     // Binary (safe to delete a running executable on Unix — OS keeps the inode alive).
-    let exe = std::env::current_exe()?;
-    std::fs::remove_file(&exe)?;
-    println!("Removed binary: {}", exe.display());
+    std::fs::remove_file(&current_exe)?;
+    println!("Removed binary: {}", current_exe.display());
     println!("chuch-term uninstalled.");
     Ok(())
 }
@@ -241,5 +262,13 @@ mod tests {
         assert_eq!(decision.requested.as_str(), "auto");
         assert_eq!(decision.effective.as_str(), "ansi256");
         assert_eq!(decision.declared_support, "RGB announced by COLORTERM");
+    }
+
+    #[test]
+    fn parse_args_uses_invoked_bin_name_in_help() {
+        let usage = Args::command().bin_name("cct").render_usage().to_string();
+
+        assert!(usage.contains("cct"));
+        assert!(!usage.contains("chuch-term"));
     }
 }

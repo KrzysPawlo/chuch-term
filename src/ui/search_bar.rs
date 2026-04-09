@@ -5,6 +5,7 @@ use ratatui::{
     widgets::Widget,
 };
 use crate::editor::EditorState;
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 
 
 /// Search bar rendered in the hints area during Search mode.
@@ -34,10 +35,14 @@ impl<'a> Widget for SearchBar<'a> {
         };
 
         let prompt = format!(" / {}   [{}/{}]", self.state.search_query, current, total);
+        let next = self.state.active_shortcuts.label_for(ShortcutAction::SearchNext, LabelStyle::Compact);
+        let prev = self.state.active_shortcuts.label_for(ShortcutAction::SearchPrev, LabelStyle::Compact);
+        let case = self.state.active_shortcuts.label_for(ShortcutAction::ToggleCaseSensitive, LabelStyle::Compact);
+        let replace = self.state.active_shortcuts.label_for(ShortcutAction::Replace, LabelStyle::Compact);
         let hint = if self.state.search_case_sensitive {
-            "  [Cc]  ^N Next  \u{00b7}  ^P Prev  \u{00b7}  ^I Case  \u{00b7}  ^R Replace  \u{00b7}  Enter Select  \u{00b7}  Esc Close"
+            format!("  [Cc]  {next} Next  \u{00b7}  {prev} Prev  \u{00b7}  {case} Case  \u{00b7}  {replace} Replace  \u{00b7}  Enter Select  \u{00b7}  Esc Close")
         } else {
-            "  ^N Next  \u{00b7}  ^P Prev  \u{00b7}  ^I Case  \u{00b7}  ^R Replace  \u{00b7}  Enter Select  \u{00b7}  Esc Close"
+            format!("  {next} Next  \u{00b7}  {prev} Prev  \u{00b7}  {case} Case  \u{00b7}  {replace} Replace  \u{00b7}  Enter Select  \u{00b7}  Esc Close")
         };
 
         let accent_style = Style::default()

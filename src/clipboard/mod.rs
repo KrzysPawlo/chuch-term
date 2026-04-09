@@ -125,12 +125,12 @@ fn run_command_with_input(
         }
     };
 
-    if let Some(mut stdin) = child.stdin.take() {
-        if stdin.write_all(input.as_bytes()).is_err() {
-            let _ = child.kill();
-            let _ = child.wait();
-            return CommandStatus::Failure;
-        }
+    if let Some(mut stdin) = child.stdin.take()
+        && stdin.write_all(input.as_bytes()).is_err()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        return CommandStatus::Failure;
     }
 
     wait_for_status(child, timeout)

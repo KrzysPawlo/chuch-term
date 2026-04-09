@@ -5,6 +5,7 @@ use ratatui::{
     widgets::Widget,
 };
 use crate::editor::EditorState;
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -29,12 +30,12 @@ impl<'a> Widget for HelpOverlay<'a> {
         let accent = self.state.palette.theme_accent;
         let key_fg = self.state.palette.theme_warning;
 
-        if area.width < 50 || area.height < 12 {
-            render_compact(area, buf, accent, overlay_bg);
+        if area.width < 68 || area.height < 14 {
+            render_compact(self.state, area, buf, accent, overlay_bg);
             return;
         }
 
-        render_full(area, buf, &self.state.palette, accent, key_fg);
+        render_full(self.state, area, buf, &self.state.palette, accent, key_fg);
     }
 }
 
@@ -109,6 +110,7 @@ fn kv(buf: &mut Buffer, y: u16, x: u16, max_x: u16, key: &str, desc: &str, style
 // ── Full layout (≥ 50 cols, ≥ 12 rows) ────────────────────────────────
 
 fn render_full(
+    state: &EditorState,
     area: Rect,
     buf: &mut Buffer,
     palette: &crate::color::Palette,
@@ -162,21 +164,45 @@ fn render_full(
 
     // Paired rows: (left_key, left_desc, right_key, right_desc).
     // Empty string = skip that cell.
-    let rows: &[(&str, &str, &str, &str)] = &[
-        ("\u{2191}\u{2193}\u{2190}\u{2192}", "Move cursor",    "Type",          "Insert character"),
-        ("Home",          "Line start",      "Backspace",      "Delete backward"),
-        ("End",           "Line end",        "Delete",         "Delete forward"),
-        ("PgUp",          "Scroll up",       "Enter",          "New line"),
-        ("PgDn",          "Scroll down",     "Ctrl+S",         "Save file"),
-        ("Shift+Arrows",  "Select text",     "Ctrl+Q",         "Quit"),
-        ("Ctrl+\u{2190}/\u{2192}", "Word left/right", "Ctrl+H", "This help"),
-        ("Ctrl+Z",        "Undo",            "Ctrl+F",         "Find in file"),
-        ("Ctrl+Y",        "Redo",            "Ctrl+L",         "Toggle line numbers"),
-        ("Ctrl+G",        "Go to line",      "Ctrl+C/X/V",     "Copy/Cut/Paste"),
-        ("Ctrl+P",        "Command palette", "Ctrl+R",         "Find & replace"),
-        ("Ctrl+A",        "Select all",      "Ctrl+O",         "Go back (prev file)"),
-        ("Alt+U / Alt+L", "Upper/Lowercase", "Ctrl+W / Del",   "Delete word \u{2190}/\u{2192}"),
-        ("Ctrl+D",        "Duplicate line",  "Alt+, / Ctrl+T", "Settings"),
+    let save = state.active_shortcuts.label_for(ShortcutAction::Save, LabelStyle::Long);
+    let quit = state.active_shortcuts.label_for(ShortcutAction::Quit, LabelStyle::Long);
+    let help = state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Long);
+    let undo = state.active_shortcuts.label_for(ShortcutAction::Undo, LabelStyle::Long);
+    let redo = state.active_shortcuts.label_for(ShortcutAction::Redo, LabelStyle::Long);
+    let search = state.active_shortcuts.label_for(ShortcutAction::Search, LabelStyle::Long);
+    let goto = state.active_shortcuts.label_for(ShortcutAction::GoToLine, LabelStyle::Long);
+    let line_numbers = state.active_shortcuts.label_for(ShortcutAction::ToggleLineNumbers, LabelStyle::Long);
+    let palette_shortcut = state.active_shortcuts.label_for(ShortcutAction::Palette, LabelStyle::Long);
+    let select_all = state.active_shortcuts.label_for(ShortcutAction::SelectAll, LabelStyle::Long);
+    let copy = state.active_shortcuts.label_for(ShortcutAction::Copy, LabelStyle::Long);
+    let cut = state.active_shortcuts.label_for(ShortcutAction::Cut, LabelStyle::Long);
+    let paste = state.active_shortcuts.label_for(ShortcutAction::Paste, LabelStyle::Long);
+    let go_back = state.active_shortcuts.label_for(ShortcutAction::GoBackBuffer, LabelStyle::Long);
+    let replace = state.active_shortcuts.label_for(ShortcutAction::Replace, LabelStyle::Long);
+    let uppercase = state.active_shortcuts.label_for(ShortcutAction::UppercaseSelection, LabelStyle::Long);
+    let lowercase = state.active_shortcuts.label_for(ShortcutAction::LowercaseSelection, LabelStyle::Long);
+    let delete_word_before = state.active_shortcuts.label_for(ShortcutAction::DeleteWordBefore, LabelStyle::Long);
+    let delete_word_after = state.active_shortcuts.label_for(ShortcutAction::DeleteWordAfter, LabelStyle::Long);
+    let word_left = state.active_shortcuts.label_for(ShortcutAction::WordLeft, LabelStyle::Long);
+    let word_right = state.active_shortcuts.label_for(ShortcutAction::WordRight, LabelStyle::Long);
+    let duplicate = state.active_shortcuts.label_for(ShortcutAction::DuplicateLine, LabelStyle::Long);
+    let settings = state.active_shortcuts.label_for(ShortcutAction::Settings, LabelStyle::Long);
+
+    let rows: [(String, &'static str, String, &'static str); 14] = [
+        ("\u{2191}\u{2193}\u{2190}\u{2192}".to_string(), "Move cursor", "Type".to_string(), "Insert character"),
+        ("Home".to_string(), "Line start", "Backspace".to_string(), "Delete backward"),
+        ("End".to_string(), "Line end", "Delete".to_string(), "Delete forward"),
+        ("PgUp".to_string(), "Scroll up", "Enter".to_string(), "New line"),
+        ("PgDn".to_string(), "Scroll down", save, "Save file"),
+        ("Shift+Arrows".to_string(), "Select text", quit, "Quit"),
+        (format!("{word_left} / {word_right}"), "Word left/right", help.clone(), "This help"),
+        (undo, "Undo", search, "Find in file"),
+        (redo, "Redo", line_numbers, "Toggle line numbers"),
+        (goto, "Go to line", format!("{copy} / {cut} / {paste}"), "Copy/Cut/Paste"),
+        (palette_shortcut, "Command palette", replace, "Find & replace"),
+        (select_all, "Select all", go_back, "Go back (prev file)"),
+        (format!("{uppercase} / {lowercase}"), "Upper/Lowercase", format!("{delete_word_before} / {delete_word_after}"), "Delete word \u{2190}/\u{2192}"),
+        (duplicate, "Duplicate line", settings, "Settings"),
     ];
 
     for (k1, d1, k2, d2) in rows {
@@ -184,10 +210,10 @@ fn render_full(
             break;
         }
         if !k1.is_empty() {
-            kv(buf, y, col1, col2, k1, d1, &kv_styles);
+            kv(buf, y, col1, col2, &k1, d1, &kv_styles);
         }
         if !k2.is_empty() {
-            kv(buf, y, col2, right, k2, d2, &kv_styles);
+            kv(buf, y, col2, right, &k2, d2, &kv_styles);
         }
         y += 1;
     }
@@ -197,13 +223,13 @@ fn render_full(
     // ── Footer ────────────────────────────────────────────────────────
     if y + 2 < area.bottom() {
         y = rule(buf, y, margin, right, palette.overlay_rule_fg, overlay_bg);
-        let footer = "Esc or ^H to close";
+        let footer = format!("Esc or {} to close", state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Compact));
         let footer_x = right.saturating_sub(footer.len() as u16);
         put(
             buf,
             footer_x,
             y,
-            footer,
+            &footer,
             Style::default().fg(palette.overlay_footer_fg).bg(overlay_bg),
             area.right(),
         );
@@ -212,9 +238,12 @@ fn render_full(
 
 // ── Compact layout (narrow / short terminal) ──────────────────────────
 
-fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color) {
+fn render_compact(state: &EditorState, area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color) {
     let y = area.top() + area.height / 2;
-    let msg = "chuch-term  \u{2014}  Esc to close help";
+    let msg = format!(
+        "chuch-term  \u{2014}  Esc or {} to close help",
+        state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Compact)
+    );
     let msg_len = msg.chars().count() as u16;
     let x = area
         .left()
@@ -223,8 +252,32 @@ fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color
         buf,
         x,
         y,
-        msg,
+        &msg,
         Style::default().fg(accent).bg(overlay_bg),
         area.right(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{EditorMode, EditorState};
+
+    #[test]
+    fn help_overlay_has_compact_fallback() {
+        let mut state = EditorState::new_empty();
+        state.mode = EditorMode::Help;
+        let area = Rect::new(0, 0, 42, 4);
+        let mut buf = Buffer::empty(area);
+
+        HelpOverlay { state: &state }.render(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(rendered.contains("close help"));
+    }
 }

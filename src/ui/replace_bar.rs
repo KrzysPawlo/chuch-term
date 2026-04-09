@@ -5,6 +5,7 @@ use ratatui::{
     widgets::Widget,
 };
 use crate::editor::EditorState;
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 
 fn put(buf: &mut Buffer, x: u16, y: u16, text: &str, style: Style, max_x: u16) -> u16 {
     let mut cx = x;
@@ -68,10 +69,20 @@ impl<'a> Widget for ReplaceBar<'a> {
 
         // hints
         let hints = [
-            ("Enter", " Replace"),
-            ("^A", " All"),
-            ("^N", " Next"),
-            ("Esc", " Close"),
+            ("Enter".to_string(), " Replace"),
+            (
+                self.state
+                    .active_shortcuts
+                    .label_for(ShortcutAction::ReplaceAll, LabelStyle::Compact),
+                " All",
+            ),
+            (
+                self.state
+                    .active_shortcuts
+                    .label_for(ShortcutAction::SearchNext, LabelStyle::Compact),
+                " Next",
+            ),
+            ("Esc".to_string(), " Close"),
         ];
         for (i, (key, desc)) in hints.iter().enumerate() {
             if i > 0 {

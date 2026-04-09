@@ -7,7 +7,7 @@
 | 0.6.x   | ✅        |
 | < 0.6   | ❌        |
 
-The first stable LTS baseline is `0.6.4`.
+The first supported LTS baseline is `0.6.5`.
 
 ## Reporting a Vulnerability
 
@@ -75,3 +75,5 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Alternatively, `cargo install --git https://github.com/KrzysPawlo/chuch-term --locked`
 compiles locally — no binary download, no Gatekeeper, no `sudo` required.
+
+Current source-install baseline: Rust `1.94+`.

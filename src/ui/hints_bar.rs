@@ -5,6 +5,7 @@ use ratatui::{
     widgets::Widget,
 };
 use crate::editor::{EditorMode, EditorState};
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 
 /// One-row contextual hints bar rendered below the status bar.
 pub struct HintsBar<'a> {
@@ -23,6 +24,12 @@ impl<'a> Widget for HintsBar<'a> {
         let accent = self.state.palette.theme_accent;
         let dim = self.state.palette.theme_dim;
         let warning = self.state.palette.theme_warning;
+        let normal_colors = HintColors {
+            accent,
+            dim,
+            bg,
+            sep_fg: self.state.palette.hints_sep_fg,
+        };
 
         // Fill background — set both fg and bg explicitly to prevent style leaks
         // across ratatui frames (set_bg alone leaves fg from the previous frame).
@@ -33,28 +40,39 @@ impl<'a> Widget for HintsBar<'a> {
         match self.state.mode {
             EditorMode::Normal => {
                 if self.state.selection_anchor.is_some() {
-                    render_selection_hints(area, buf, accent, dim, bg, self.state.palette.hints_sep_fg);
+                    render_selection_hints(
+                        area,
+                        buf,
+                        self.state,
+                        &normal_colors,
+                    );
                 } else {
                     render_normal(
                         area,
                         buf,
+                        self.state,
                         self.state.previous_buffer.is_some(),
-                        accent,
-                        dim,
-                        bg,
-                        self.state.palette.hints_sep_fg,
+                        &normal_colors,
                     );
                 }
             }
             EditorMode::ConfirmQuit => {
-                render_confirm(area, buf, warning, bg, self.state.palette.hints_warn_sep_fg)
+                render_confirm(
+                    area,
+                    buf,
+                    self.state,
+                    warning,
+                    bg,
+                    self.state.palette.hints_warn_sep_fg,
+                )
             }
-            EditorMode::Help => render_help(area, buf, dim, bg),
+            EditorMode::Help => render_help(area, buf, self.state, dim, bg),
             EditorMode::Search | EditorMode::GoToLine => {
                 // These modes render their own bar widget (search_bar / goto_bar).
             }
             EditorMode::Replace | EditorMode::CommandPalette
-            | EditorMode::SaveAs | EditorMode::Settings => {
+            | EditorMode::SaveAs | EditorMode::Settings | EditorMode::Keybindings
+            | EditorMode::CommandAlias => {
                 // Respective overlays/bars handle these modes.
             }
         }
@@ -103,26 +121,30 @@ fn render_hints(
 fn render_normal(
     area: Rect,
     buf: &mut Buffer,
+    state: &EditorState,
     has_prev: bool,
-    accent: Color,
-    dim: Color,
-    bg: Color,
-    sep_fg: Color,
+    colors: &HintColors,
 ) {
-    let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(dim).bg(bg);
-    let sep_style  = Style::default().fg(sep_fg).bg(bg);
+    let key_style  = Style::default().fg(colors.accent).bg(colors.bg).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(colors.dim).bg(colors.bg);
+    let sep_style  = Style::default().fg(colors.sep_fg).bg(colors.bg);
+    let save = state.active_shortcuts.label_for(ShortcutAction::Save, LabelStyle::Compact);
+    let undo = state.active_shortcuts.label_for(ShortcutAction::Undo, LabelStyle::Compact);
+    let search = state.active_shortcuts.label_for(ShortcutAction::Search, LabelStyle::Compact);
+    let palette = state.active_shortcuts.label_for(ShortcutAction::Palette, LabelStyle::Compact);
+    let back = state.active_shortcuts.label_for(ShortcutAction::GoBackBuffer, LabelStyle::Compact);
+    let help = state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Compact);
 
     if has_prev {
         render_hints(
             area, buf,
             &[
-                ("^S", "Save"),
-                ("^Z", "Undo"),
-                ("^F", "Find"),
-                ("^P", "Commands"),
-                ("^O", "Back"),
-                ("^H", "Help"),
+                (&save, "Save"),
+                (&undo, "Undo"),
+                (&search, "Find"),
+                (&palette, "Commands"),
+                (&back, "Back"),
+                (&help, "Help"),
             ],
             key_style, desc_style, sep_style,
         );
@@ -130,11 +152,11 @@ fn render_normal(
         render_hints(
             area, buf,
             &[
-                ("^S", "Save"),
-                ("^Z", "Undo"),
-                ("^F", "Find"),
-                ("^P", "Commands"),
-                ("^H", "Help"),
+                (&save, "Save"),
+                (&undo, "Undo"),
+                (&search, "Find"),
+                (&palette, "Commands"),
+                (&help, "Help"),
             ],
             key_style, desc_style, sep_style,
         );
@@ -144,51 +166,64 @@ fn render_normal(
 fn render_selection_hints(
     area: Rect,
     buf: &mut Buffer,
-    accent: Color,
-    dim: Color,
-    bg: Color,
-    sep_fg: Color,
+    state: &EditorState,
+    colors: &HintColors,
 ) {
-    let key_style  = Style::default().fg(accent).bg(bg).add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(dim).bg(bg);
-    let sep_style  = Style::default().fg(sep_fg).bg(bg);
+    let key_style  = Style::default().fg(colors.accent).bg(colors.bg).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(colors.dim).bg(colors.bg);
+    let sep_style  = Style::default().fg(colors.sep_fg).bg(colors.bg);
+    let copy = state.active_shortcuts.label_for(ShortcutAction::Copy, LabelStyle::Compact);
+    let cut = state.active_shortcuts.label_for(ShortcutAction::Cut, LabelStyle::Compact);
+    let paste = state.active_shortcuts.label_for(ShortcutAction::Paste, LabelStyle::Compact);
 
     render_hints(
         area, buf,
         &[
-            ("^C", "Copy"),
-            ("^X", "Cut"),
-            ("^V", "Paste"),
+            (&copy, "Copy"),
+            (&cut, "Cut"),
+            (&paste, "Paste"),
             ("Esc", "Clear"),
         ],
         key_style, desc_style, sep_style,
     );
 }
 
-fn render_confirm(area: Rect, buf: &mut Buffer, warning: Color, bg: Color, sep_fg: Color) {
+fn render_confirm(area: Rect, buf: &mut Buffer, state: &EditorState, warning: Color, bg: Color, sep_fg: Color) {
     let key_style  = Style::default().fg(warning).bg(bg).add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(warning).bg(bg);
     let sep_style  = Style::default().fg(sep_fg).bg(bg);
+    let quit = state.active_shortcuts.label_for(ShortcutAction::Quit, LabelStyle::Compact);
+    let save = state.active_shortcuts.label_for(ShortcutAction::Save, LabelStyle::Compact);
 
     render_hints(
         area, buf,
         &[
-            ("^Q", "Force Quit"),
-            ("^S", "Save & Quit"),
+            (&quit, "Force Quit"),
+            (&save, "Save & Quit"),
             ("Esc", "Cancel"),
         ],
         key_style, desc_style, sep_style,
     );
 }
 
-fn render_help(area: Rect, buf: &mut Buffer, dim: Color, bg: Color) {
-    let text = "Esc  Close Help";
+fn render_help(area: Rect, buf: &mut Buffer, state: &EditorState, dim: Color, bg: Color) {
+    let text = format!(
+        "Esc or {}  Close Help",
+        state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Compact)
+    );
     let text_len = text.chars().count() as u16;
     let x = area
         .left()
         .saturating_add(area.width.saturating_sub(text_len) / 2);
     let style = Style::default().fg(dim).bg(bg);
-    put(buf, x, area.top(), text, style, area.right());
+    put(buf, x, area.top(), &text, style, area.right());
+}
+
+struct HintColors {
+    accent: Color,
+    dim: Color,
+    bg: Color,
+    sep_fg: Color,
 }
 
 #[cfg(test)]

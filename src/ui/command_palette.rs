@@ -6,6 +6,7 @@ use ratatui::{
 };
 use crate::editor::EditorState;
 use crate::commands::COMMANDS;
+use crate::shortcuts::LabelStyle;
 
 /// Column offset from the left margin where key hints are displayed.
 const CMD_KEY_COL: u16 = 25;
@@ -46,7 +47,8 @@ impl<'a> Widget for CommandPalette<'a> {
             }
         }
 
-        if area.width < 40 || area.height < 5 {
+        if area.width < 52 || area.height < 7 {
+            render_compact(area, buf, accent, desc_color, overlay_bg);
             return;
         }
 
@@ -116,8 +118,11 @@ impl<'a> Widget for CommandPalette<'a> {
                 let mut x = margin + 1;
                 x = put(buf, x, y, cmd.name, sel_bold, right);
                 let key_start = margin + CMD_KEY_COL;
-                if key_start < right && !cmd.key.is_empty() {
-                    put(buf, key_start, y, cmd.key, sel_style, right.saturating_sub(CMD_KEY_COL));
+                if let Some(shortcut) = cmd.shortcut {
+                    let label = self.state.active_shortcuts.label_for(shortcut, LabelStyle::Long);
+                    if key_start < right {
+                        put(buf, key_start, y, &label, sel_style, right.saturating_sub(CMD_KEY_COL));
+                    }
                 }
                 let desc_start = margin + CMD_DESC_COL;
                 if desc_start < right {
@@ -132,8 +137,11 @@ impl<'a> Widget for CommandPalette<'a> {
                 let mut x = margin + 1;
                 x = put(buf, x, y, cmd.name, name_style, right);
                 let key_start = margin + CMD_KEY_COL;
-                if key_start < right && !cmd.key.is_empty() {
-                    put(buf, key_start, y, cmd.key, key_style, right.saturating_sub(CMD_KEY_COL));
+                if let Some(shortcut) = cmd.shortcut {
+                    let label = self.state.active_shortcuts.label_for(shortcut, LabelStyle::Long);
+                    if key_start < right {
+                        put(buf, key_start, y, &label, key_style, right.saturating_sub(CMD_KEY_COL));
+                    }
                 }
                 let desc_start = margin + CMD_DESC_COL;
                 if desc_start < right {
@@ -173,5 +181,61 @@ impl<'a> Widget for CommandPalette<'a> {
             }
             let _ = fx;
         }
+    }
+}
+
+fn render_compact(
+    area: Rect,
+    buf: &mut Buffer,
+    accent: ratatui::style::Color,
+    dim: ratatui::style::Color,
+    overlay_bg: ratatui::style::Color,
+) {
+    let y = area.top() + area.height / 2;
+    let msg = "Command Palette  —  Resize wider or press Esc";
+    let x = area
+        .left()
+        .saturating_add(area.width.saturating_sub(msg.chars().count() as u16) / 2);
+    put(
+        buf,
+        x,
+        y,
+        msg,
+        Style::default().fg(accent).bg(overlay_bg).add_modifier(Modifier::BOLD),
+        area.right(),
+    );
+    if y + 1 < area.bottom() {
+        put(
+            buf,
+            area.left().saturating_add(2),
+            y + 1,
+            "Open a wider terminal to browse and run commands.",
+            Style::default().fg(dim).bg(overlay_bg),
+            area.right(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{EditorMode, EditorState};
+
+    #[test]
+    fn command_palette_has_compact_fallback() {
+        let mut state = EditorState::new_empty();
+        state.mode = EditorMode::CommandPalette;
+        let area = Rect::new(0, 0, 40, 4);
+        let mut buf = Buffer::empty(area);
+
+        CommandPalette { state: &state }.render(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(rendered.contains("Command Palette"));
     }
 }

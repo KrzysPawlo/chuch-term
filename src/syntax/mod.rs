@@ -93,7 +93,7 @@ pub fn has_indent_error(line: &str, tab_width: u8, lang: Language) -> bool {
         return true; // mixed
     }
     if has_spaces && tab_width > 0 {
-        return leading.len() % tab_width as usize != 0;
+        return !leading.len().is_multiple_of(tab_width as usize);
     }
     false
 }

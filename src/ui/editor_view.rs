@@ -7,6 +7,7 @@ use ratatui::{
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::editor::EditorState;
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 use crate::syntax::TokenKind;
 
 fn token_color(palette: &crate::color::Palette, kind: TokenKind) -> Color {
@@ -167,7 +168,7 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
                     && in_leading_ws
                     && display_cols > 0
                     && tab_width > 0
-                    && display_cols % tab_width as usize == 0
+                    && display_cols.is_multiple_of(tab_width as usize)
                     && (ch == ' ' || ch == '\t');
 
                 let render_ch = if is_guide { '\u{2502}' } else { ch }; // '│'
@@ -252,10 +253,19 @@ fn render_welcome(state: &EditorState, area: Rect, buf: &mut Buffer) {
 
     let name_line = "chuch-term";
 
-    let hints: &[(&str, &str)] = &[
-        ("^H", "help"),
-        ("^Q", "quit"),
-        ("^S", "save"),
+    let hints = [
+        (
+            state.active_shortcuts.label_for(ShortcutAction::Help, LabelStyle::Compact),
+            "help",
+        ),
+        (
+            state.active_shortcuts.label_for(ShortcutAction::Quit, LabelStyle::Compact),
+            "quit",
+        ),
+        (
+            state.active_shortcuts.label_for(ShortcutAction::Save, LabelStyle::Compact),
+            "save",
+        ),
     ];
 
     let name_style = Style::default()

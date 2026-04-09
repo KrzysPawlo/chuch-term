@@ -1,8 +1,10 @@
 pub mod command_palette;
+pub mod command_alias_overlay;
 pub mod editor_view;
 pub mod goto_bar;
 pub mod help_overlay;
 pub mod hints_bar;
+pub mod keybindings_overlay;
 pub mod line_numbers;
 pub mod replace_bar;
 pub mod saveas_bar;
@@ -16,10 +18,12 @@ use ratatui::{
 };
 use crate::editor::{EditorMode, EditorState, LineNumberMode};
 use command_palette::CommandPalette;
+use command_alias_overlay::CommandAliasOverlay;
 use editor_view::EditorView;
 use goto_bar::GotoBar;
 use help_overlay::HelpOverlay;
 use hints_bar::HintsBar;
+use keybindings_overlay::KeybindingsOverlay;
 use line_numbers::{gutter_width, LineNumbersGutter};
 use replace_bar::ReplaceBar;
 use saveas_bar::SaveAsBar;
@@ -85,7 +89,7 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
         EditorMode::SaveAs => {
             frame.render_widget(SaveAsBar { state }, hints_area);
         }
-        EditorMode::CommandPalette | EditorMode::Settings => {
+        EditorMode::CommandPalette | EditorMode::Settings | EditorMode::Keybindings | EditorMode::CommandAlias => {
             // Overlays cover the hints bar — nothing rendered here.
         }
         _ => {
@@ -106,6 +110,16 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
 
     if state.mode == EditorMode::Settings {
         frame.render_widget(SettingsOverlay { state }, area);
+        return;
+    }
+
+    if state.mode == EditorMode::Keybindings {
+        frame.render_widget(KeybindingsOverlay { state }, area);
+        return;
+    }
+
+    if state.mode == EditorMode::CommandAlias {
+        frame.render_widget(CommandAliasOverlay { state }, area);
         return;
     }
 

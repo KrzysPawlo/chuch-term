@@ -16,6 +16,10 @@ current_version() {
   sed -n 's/^version = "\(.*\)"/\1/p' "${REPO_ROOT}/Cargo.toml" | head -n 1
 }
 
+current_rust_version() {
+  sed -n 's/^rust-version = "\(.*\)"/\1/p' "${REPO_ROOT}/Cargo.toml" | head -n 1
+}
+
 replace_in_file() {
   local path="$1"
   local old_text="$2"
@@ -71,6 +75,8 @@ bump() {
   local lts_flag="${2:-false}"
   local old_version
   old_version="$(current_version)"
+  local rust_version
+  rust_version="$(current_rust_version)"
 
   replace_in_file "${REPO_ROOT}/Cargo.toml" "version = \"${old_version}\"" "version = \"${new_version}\""
 
@@ -88,10 +94,19 @@ bump() {
   replace_in_file "${REPO_ROOT}/docs/architecture.md" "Supported config keys in ${old_version}:" "Supported config keys in ${new_version}:"
   replace_in_file "${REPO_ROOT}/docs/architecture.md" "Render mode contract in \`${old_version}\`:" "Render mode contract in \`${new_version}\`:"
   replace_in_file "${REPO_ROOT}/docs/architecture.md" "fixed in \`${old_version}\`" "fixed in \`${new_version}\`"
+  RUST_VERSION="$rust_version" perl -0pi -e '
+    my $rust = $ENV{RUST_VERSION};
+    s/rust-[0-9.]+\+-orange/rust-$rust+-orange/g;
+    s/Rust `?[0-9.]+\+`?/Rust `$rust+`/g;
+    s/Rust [0-9.]+\+/Rust $rust+/g;
+    s/If you have Rust installed \([0-9.]+\+\):/If you have Rust installed ($rust+):/g;
+  ' "${REPO_ROOT}/README.md" "${REPO_ROOT}/docs/install.md" "${REPO_ROOT}/SECURITY.md" "${REPO_ROOT}/docs/release_instructions.md"
 
   if [[ "$lts_flag" == "true" ]]; then
-    replace_in_file "${REPO_ROOT}/README.md" "first stable LTS baseline is \`${old_version}\`" "first stable LTS baseline is \`${new_version}\`"
-    replace_in_file "${REPO_ROOT}/SECURITY.md" "first stable LTS baseline is \`${old_version}\`" "first stable LTS baseline is \`${new_version}\`"
+    replace_in_file "${REPO_ROOT}/README.md" "first stable LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
+    replace_in_file "${REPO_ROOT}/SECURITY.md" "first stable LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
+    replace_in_file "${REPO_ROOT}/README.md" "first supported LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
+    replace_in_file "${REPO_ROOT}/SECURITY.md" "first supported LTS baseline is \`${old_version}\`" "first supported LTS baseline is \`${new_version}\`"
   fi
 
   ensure_changelog_section "$new_version" "$lts_flag"

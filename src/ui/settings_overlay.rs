@@ -5,10 +5,11 @@ use ratatui::{
     widgets::Widget,
 };
 use crate::editor::EditorState;
+use crate::shortcuts::{LabelStyle, ShortcutAction, ShortcutProfile};
 
 /// Number of interactive items in the settings list.
 /// Must match the item indices in `toggle_setting()` in input/mod.rs.
-pub const SETTINGS_ITEM_COUNT: usize = 9;
+pub const SETTINGS_ITEM_COUNT: usize = 16;
 
 pub struct SettingsOverlay<'a> {
     pub state: &'a EditorState,
@@ -26,7 +27,7 @@ impl<'a> Widget for SettingsOverlay<'a> {
 
         let accent = self.state.palette.theme_accent;
 
-        if area.width < 50 || area.height < 16 {
+        if area.width < 56 || area.height < 20 {
             render_compact(area, buf, accent, overlay_bg);
             return;
         }
@@ -62,7 +63,7 @@ fn rule(buf: &mut Buffer, y: u16, x: u16, max_x: u16, rule_fg: Color, overlay_bg
 /// Parameters for a single settings row.
 struct ItemRow<'a> {
     label: &'a str,
-    hint: Option<&'a str>,      // keyboard hint shown on right (e.g. "Ctrl+L")
+    hint: Option<&'a str>,      // keyboard hint shown on right
     checked: Option<bool>,      // Some(bool) for checkboxes, None for non-bool
     value_str: Option<&'a str>, // Some("4") for numeric / enum items
 }
@@ -163,6 +164,16 @@ fn render_full(state: &EditorState, area: Rect, buf: &mut Buffer, accent: Color,
     y += 1;
 
     let tab_w_str = cfg.editor.tab_width.to_string();
+    let shortcut_profile = match cfg.shortcuts.profile {
+        ShortcutProfile::Ctrl => "ctrl",
+        ShortcutProfile::Alt => "alt",
+    };
+    let alias_status = crate::command_alias::alias_status(&cfg.command);
+    let alias_name = if cfg.command.alias.trim().is_empty() {
+        "(not set)"
+    } else {
+        cfg.command.alias.trim()
+    };
     let ctx = RowCtx {
         left: margin,
         right,
@@ -175,7 +186,8 @@ fn render_full(state: &EditorState, area: Rect, buf: &mut Buffer, accent: Color,
         check_off_fg: state.palette.settings_check_off_fg,
         dim_fg: state.palette.settings_dim_fg,
     };
-    y = item_row(buf, y, &ctx, 0, ItemRow { label: "Line numbers",          hint: Some("Ctrl+L"),            checked: Some(cfg.editor.line_numbers),    value_str: None });
+    let line_numbers_hint = state.active_shortcuts.label_for(ShortcutAction::ToggleLineNumbers, LabelStyle::Long);
+    y = item_row(buf, y, &ctx, 0, ItemRow { label: "Line numbers",          hint: Some(&line_numbers_hint),  checked: Some(cfg.editor.line_numbers),    value_str: None });
     y = item_row(buf, y, &ctx, 1, ItemRow { label: "Relative numbers",      hint: None,                      checked: Some(cfg.editor.relative_numbers), value_str: None });
     y = item_row(buf, y, &ctx, 2, ItemRow { label: "Syntax highlighting",   hint: None,                      checked: Some(cfg.editor.syntax_highlight), value_str: None });
     y = item_row(buf, y, &ctx, 3, ItemRow { label: "Auto-indent on Enter",  hint: None,                      checked: Some(cfg.editor.auto_indent),      value_str: None });
@@ -193,6 +205,25 @@ fn render_full(state: &EditorState, area: Rect, buf: &mut Buffer, accent: Color,
         y += 1;
     }
 
+    if y + 5 < area.bottom() {
+        put(buf, margin, y, "SHORTCUTS", Style::default().fg(state.palette.overlay_section_fg).bg(overlay_bg).add_modifier(Modifier::BOLD), right);
+        y += 1;
+        y = item_row(buf, y, &ctx, 9, ItemRow { label: "Shortcut profile", hint: Some("\u{2190} \u{2192}"), checked: None, value_str: Some(shortcut_profile) });
+        y = item_row(buf, y, &ctx, 10, ItemRow { label: "Customize shortcuts", hint: Some("Enter"), checked: None, value_str: None });
+        y = item_row(buf, y, &ctx, 11, ItemRow { label: "Reset shortcuts to defaults", hint: Some("Enter"), checked: None, value_str: None });
+        y += 1;
+    }
+
+    if y + 6 < area.bottom() {
+        put(buf, margin, y, "COMMAND", Style::default().fg(state.palette.overlay_section_fg).bg(overlay_bg).add_modifier(Modifier::BOLD), right);
+        y += 1;
+        y = item_row(buf, y, &ctx, 12, ItemRow { label: "Command alias", hint: Some("Enter"), checked: None, value_str: Some(alias_name) });
+        y = item_row(buf, y, &ctx, 13, ItemRow { label: "Install alias", hint: Some("Enter"), checked: None, value_str: None });
+        y = item_row(buf, y, &ctx, 14, ItemRow { label: "Remove alias", hint: Some("Enter"), checked: None, value_str: None });
+        y = item_row(buf, y, &ctx, 15, ItemRow { label: "Alias status", hint: None, checked: None, value_str: Some(&alias_status.label) });
+        y += 1;
+    }
+
     // ── Footer ────────────────────────────────────────────────────────
     if y + 2 < area.bottom() {
         y = rule(buf, y, margin, right, state.palette.settings_rule_fg, overlay_bg);
@@ -204,7 +235,7 @@ fn render_full(state: &EditorState, area: Rect, buf: &mut Buffer, accent: Color,
 // ── Compact (narrow terminal) ──────────────────────────────────────────
 
 fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color) {
-    let msg = "Settings  \u{2014}  Esc to close";
+    let msg = "Settings  \u{2014}  Resize wider or press Esc";
     let msg_len = msg.chars().count() as u16;
     let y = area.top() + area.height / 2;
     let x = area.left().saturating_add(area.width.saturating_sub(msg_len) / 2);
@@ -214,5 +245,29 @@ fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color
         if cx >= area.right() { break; }
         buf[(cx, y)].set_char(ch).set_style(style);
         cx += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{EditorMode, EditorState};
+
+    #[test]
+    fn settings_overlay_has_compact_fallback() {
+        let mut state = EditorState::new_empty();
+        state.mode = EditorMode::Settings;
+        let area = Rect::new(0, 0, 42, 4);
+        let mut buf = Buffer::empty(area);
+
+        SettingsOverlay { state: &state }.render(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(rendered.contains("Settings"));
     }
 }

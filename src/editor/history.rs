@@ -27,15 +27,14 @@ impl History {
     }
 
     pub fn push(&mut self, change: TextChange) {
-        if self.merge_enabled {
-            if let Some(prev) = self.undo_stack.last_mut() {
-                if can_merge(prev, &change) {
-                    prev.new_text.push_str(&change.new_text);
-                    prev.cursor_after = change.cursor_after;
-                    self.redo_stack.clear();
-                    return;
-                }
-            }
+        if self.merge_enabled
+            && let Some(prev) = self.undo_stack.last_mut()
+            && can_merge(prev, &change)
+        {
+            prev.new_text.push_str(&change.new_text);
+            prev.cursor_after = change.cursor_after;
+            self.redo_stack.clear();
+            return;
         }
 
         self.undo_stack.push(change);

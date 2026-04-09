@@ -78,9 +78,11 @@ fn event_loop(
             last_config_check = Instant::now();
             let new_mtime = crate::config::config_mtime();
             if new_mtime != state.config_mtime {
-                let (new_config, msg) = crate::config::load_config();
-                state.apply_config(new_config);
-                state.config_mtime = crate::config::config_mtime();
+                let (new_config, msg) = crate::config::load_existing_config();
+                if let Some(new_config) = new_config {
+                    state.apply_config(new_config);
+                }
+                state.config_mtime = new_mtime;
                 if let Some(m) = msg {
                     state.status_message = Some(m);
                 }

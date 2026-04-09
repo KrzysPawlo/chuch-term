@@ -7,6 +7,7 @@ use ratatui::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::editor::{EditorMode, EditorState};
+use crate::shortcuts::{LabelStyle, ShortcutAction};
 use crate::syntax::Language;
 
 pub struct StatusBar<'a> {
@@ -29,7 +30,7 @@ impl<'a> Widget for StatusBar<'a> {
         }
 
         match self.state.mode {
-            EditorMode::ConfirmQuit => render_confirm_quit(area, buf, warning, bg),
+            EditorMode::ConfirmQuit => render_confirm_quit(self.state, area, buf, warning, bg),
             _ => render_normal(self.state, area, buf, bg, dim),
         }
     }
@@ -158,18 +159,22 @@ fn render_left(
 }
 
 fn render_confirm_quit(
+    state: &EditorState,
     area: Rect,
     buf: &mut Buffer,
     warning: ratatui::style::Color,
     bg: ratatui::style::Color,
 ) {
-    let message =
-        " Unsaved changes. Ctrl+Q force quit  ·  Ctrl+S save & quit  ·  Esc cancel ";
+    let quit = state.active_shortcuts.label_for(ShortcutAction::Quit, LabelStyle::Long);
+    let save = state.active_shortcuts.label_for(ShortcutAction::Save, LabelStyle::Long);
+    let message = format!(
+        " Unsaved changes. {quit} force quit  ·  {save} save & quit  ·  Esc cancel "
+    );
     let _ = write_text(
         buf,
         area.left(),
         area.top(),
-        &truncate_to_width(message, area.width as usize),
+        &truncate_to_width(&message, area.width as usize),
         Style::default().fg(warning).bg(bg).add_modifier(Modifier::BOLD),
         area.right(),
     );

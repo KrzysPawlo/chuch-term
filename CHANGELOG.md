@@ -7,9 +7,35 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-04-09
+
+> First supported LTS release.
+
+### Fixed
+- **Release-contract drift** — the project now ships on one explicit modern Rust baseline instead of claiming compatibility with an older toolchain while resolving newer `edition2024` dependencies in CI
+- **Dependency-policy blocker** — the TUI stack now uses the modern `ratatui 0.30` line, removing the archived `paste` crate from the shipped dependency tree and unblocking `cargo deny`
+- **Clap MSRV drift** — CLI dependencies are now pinned to the curated `4.6.0` line instead of an open-ended major that could silently jump the required toolchain
+- **UI shortcut drift** — help overlay, hints bar, command palette, settings hints, and status messaging now render active shortcuts from one runtime keymap source instead of hard-coded labels
+- **Config safety** — settings saves now use an atomic write+rename path, and hot reload keeps the last good runtime config instead of partially applying invalid shortcut edits
+- **Overlay compact gap** — help, settings, keybindings, and command palette now fall back to truthful compact states instead of rendering blank or misleading small-terminal views
+- **Alias trust surface** — managed command aliases now validate strictly, refuse unrelated path collisions, and never mutate files unless the user explicitly installs or removes the alias
+
+### Changed
+- **Toolchain contract** — `chuch-term` now targets Rust `1.94+`, package edition `2024`, and an exact CI contract job on Rust `1.94.1`
+- **LTS baseline** — `0.6.5` replaces `0.6.4` as the first supported LTS release after the `0.6.4` candidate exposed final toolchain and supply-chain blockers
+- **Release/docs surface** — README, install docs, security docs, release instructions, workflow copy, and version tooling now all describe the same `0.6.5` / Rust `1.94+` contract
+- **Shortcut contract** — `0.6.5` now ships with a default `ctrl` profile, optional `alt` profile, and per-action override support for the curated modifier-based command set
+- **CLI polish** — help and usage output now show the invoked command name, so installed personal aliases behave naturally without rebranding the product
+
+### Added
+- Dual CI guardrail: floating `stable` test coverage plus exact Rust `1.94.1` contract validation before release jobs
+- Dedicated shortcut customization overlay with conflict validation and profile-default reset
+- Regression coverage for shortcut resolution, invalid override rejection, profile switching, and trust-preserving config fallback
+- Managed personal command alias support via `[command].alias` plus explicit install/remove actions in Settings
+
 ## [0.6.4] - 2026-04-09
 
-> First stable LTS release.
+> Aborted pre-LTS release candidate. `0.6.5` is the first supported LTS baseline.
 
 ### Fixed
 - **UTF-8 boundary hardening** — cursor movement, buffer mutations, selection ranges, and edit actions now clamp misaligned byte offsets before slicing or mutating text, removing panic-risk from malformed runtime positions
@@ -18,13 +44,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 - **Settings access** — `Ctrl+T` is now a second official shortcut for the settings overlay; `Alt+,` remains supported and unchanged
-- **Release contract** — CI now verifies the tag matches `Cargo.toml`, validates MSRV on Rust `1.78`, and prepares automated Homebrew formula sync from release assets instead of manual copy-paste
+- **Release contract** — CI now verifies the tag matches `Cargo.toml`, validates the declared Rust contract, and prepares automated Homebrew formula sync from release assets instead of manual copy-paste
 - **Version tooling** — release bumping and Homebrew formula rendering are now centralized around `scripts/release_version.sh`, with `Cargo.toml` as the canonical version source
 
 ### Added
 - Regression tests for misaligned UTF-8 cursor offsets in buffer, cursor, selection, and newline paths
 - Automated Homebrew sync workflow support for both the main repo formula and the `homebrew-chuch` tap repo
-- User-facing `0.6.4` LTS messaging across README, security docs, and release notes
+- User-facing `0.6.4` candidate messaging across README, security docs, and release notes
 
 ## [0.6.3] - 2026-04-08
 
