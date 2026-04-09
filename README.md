@@ -141,6 +141,20 @@ cargo install --git https://github.com/KrzysPawlo/chuch-term --locked
 
 Get Rust from [rustup.rs](https://rustup.rs).
 
+On macOS, Cargo-based installs also require Apple's Command Line Tools or full Xcode.
+If CLT are already installed, updating them is usually enough — a full reinstall is normally not required:
+
+```bash
+softwareupdate --list
+sudo softwareupdate --install "Command Line Tools for Xcode-16.4"
+```
+
+If CLT are missing entirely, install them with:
+
+```bash
+xcode-select --install
+```
+
 ### Pre-built binaries
 
 Download from [GitHub Releases](https://github.com/KrzysPawlo/chuch-term/releases/latest):
@@ -312,6 +326,8 @@ color_mode = "auto"
 - Rust `1.94+` to build from source
 - macOS or Linux
 - a normal interactive terminal
+- On macOS, Apple Command Line Tools or Xcode are required for Cargo-based builds/install
+- If CLT are already present, updating them via `softwareupdate` is usually enough
 
 Managed command aliases in this LTS pass are supported on Unix-like systems only.
 
