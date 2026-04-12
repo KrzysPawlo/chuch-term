@@ -3,10 +3,13 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const DISPLAY_CONFIG_PATH: &str = "~/.config/chuch-term/config.toml";
+const CONFIG_APP_DIR: &str = "chuch";
+const LEGACY_CONFIG_APP_DIR: &str = "chuch-term";
+pub const DISPLAY_CONFIG_PATH: &str = "~/.config/chuch/config.toml";
+pub const LEGACY_DISPLAY_CONFIG_DIR: &str = "~/.config/chuch-term";
 
 pub const DEFAULT_CONFIG_CONTENT: &str = r##"# chuch-term configuration
-# Location: ~/.config/chuch-term/config.toml
+# Location: ~/.config/chuch/config.toml
 # Changes are hot-reloaded within 2 seconds.
 
 [editor]
@@ -214,7 +217,15 @@ pub struct EditorConfig {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    config_dir().map(|d| d.join("chuch-term").join("config.toml"))
+    config_dir().map(|d| config_path_from_base_dir(&d))
+}
+
+pub fn config_dir_path() -> Option<PathBuf> {
+    config_dir().map(|d| config_dir_path_from_base_dir(&d))
+}
+
+pub fn legacy_config_dir() -> Option<PathBuf> {
+    config_dir().map(|d| legacy_config_dir_from_base_dir(&d))
 }
 
 fn config_base_dir_from_env(
@@ -235,38 +246,88 @@ fn config_dir() -> Option<PathBuf> {
     )
 }
 
+fn config_dir_path_from_base_dir(base_dir: &Path) -> PathBuf {
+    base_dir.join(CONFIG_APP_DIR)
+}
+
+fn config_path_from_base_dir(base_dir: &Path) -> PathBuf {
+    config_dir_path_from_base_dir(base_dir).join("config.toml")
+}
+
+fn legacy_config_dir_from_base_dir(base_dir: &Path) -> PathBuf {
+    base_dir.join(LEGACY_CONFIG_APP_DIR)
+}
+
+fn cleanup_legacy_config_dir() -> Option<String> {
+    let base_dir = config_dir()?;
+    cleanup_legacy_config_dir_from_base_dir(&base_dir)
+}
+
+fn cleanup_legacy_config_dir_from_base_dir(base_dir: &Path) -> Option<String> {
+    let legacy_dir = legacy_config_dir_from_base_dir(base_dir);
+    let current_dir = config_dir_path_from_base_dir(base_dir);
+
+    if legacy_dir == current_dir || !legacy_dir.exists() {
+        return None;
+    }
+
+    match std::fs::remove_dir_all(&legacy_dir) {
+        Ok(()) => Some(format!(
+            "Config reset: removed legacy {} and now uses {}",
+            LEGACY_DISPLAY_CONFIG_DIR,
+            DISPLAY_CONFIG_PATH
+        )),
+        Err(err) => Some(format!(
+            "Config cleanup warning: could not remove legacy {} ({err})",
+            LEGACY_DISPLAY_CONFIG_DIR
+        )),
+    }
+}
+
+fn join_config_notes(primary: Option<String>, secondary: Option<String>) -> Option<String> {
+    match (primary, secondary) {
+        (Some(primary), Some(secondary)) => Some(format!("{primary}; {secondary}")),
+        (Some(primary), None) => Some(primary),
+        (None, Some(secondary)) => Some(secondary),
+        (None, None) => None,
+    }
+}
+
 pub fn load_config() -> (EditorConfig, Option<String>) {
+    let migration_note = cleanup_legacy_config_dir();
     let path = match config_path() {
         Some(path) => path,
-        None => return (EditorConfig::default(), None),
+        None => return (EditorConfig::default(), migration_note),
     };
-    load_config_from_path(&path)
+    let (config, note) = load_config_from_path(&path);
+    (config, join_config_notes(note, migration_note))
 }
 
 pub fn load_existing_config() -> (Option<EditorConfig>, Option<String>) {
+    let migration_note = cleanup_legacy_config_dir();
     let path = match config_path() {
         Some(path) => path,
-        None => return (None, None),
+        None => return (None, migration_note),
     };
 
     if !path.exists() {
-        return (None, None);
+        return (None, migration_note);
     }
 
     match std::fs::read_to_string(&path) {
         Ok(content) => match toml::from_str::<EditorConfig>(&content) {
             Ok(cfg) => match validate_config(cfg) {
-                Ok((cfg, warn)) => (Some(cfg), warn),
-                Err(err) => (None, Some(err)),
+                Ok((cfg, warn)) => (Some(cfg), join_config_notes(warn, migration_note)),
+                Err(err) => (None, join_config_notes(Some(err), migration_note)),
             },
             Err(err) => (
                 None,
-                Some(format!("Config parse error: {err}")),
+                join_config_notes(Some(format!("Config parse error: {err}")), migration_note),
             ),
         },
         Err(err) => (
             None,
-            Some(format!("Config read error: {err}")),
+            join_config_notes(Some(format!("Config read error: {err}")), migration_note),
         ),
     }
 }
@@ -309,24 +370,52 @@ pub fn load_config_from_path(path: &Path) -> (EditorConfig, Option<String>) {
 }
 
 pub fn config_mtime() -> Option<SystemTime> {
+    let _ = cleanup_legacy_config_dir();
     config_path()?.metadata().ok()?.modified().ok()
 }
 
 /// Persist the current in-memory config back to disk (used by the Settings overlay).
-/// Overwrites the file with clean TOML — comments from the original file are not preserved.
+///
+/// Uses a merge strategy: reads the existing file as a raw TOML table and
+/// merges the CLI-known sections on top. This preserves desktop-app-only
+/// sections such as [lsp], [window], [files], [log_viewer], [deep_search],
+/// and [cli] that chuch-term does not know about, preventing silent data loss
+/// when both chuch-app and chuch-term are installed.
 pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
     use anyhow::Context as _;
     validate_config(config.clone())
         .map_err(anyhow::Error::msg)
         .context("Cannot save invalid config")?;
+    let _ = cleanup_legacy_config_dir();
     let path = config_path()
         .context("Cannot determine config path")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Cannot create config dir: {}", parent.display()))?;
     }
-    let content = toml::to_string_pretty(config)
+
+    // Read the existing file as a raw TOML table so unknown sections survive.
+    let mut merged: toml::Table = if path.exists() {
+        let raw = std::fs::read_to_string(&path).unwrap_or_default();
+        toml::from_str(&raw).unwrap_or_default()
+    } else {
+        toml::Table::new()
+    };
+
+    // Serialise only the CLI-known EditorConfig sections.
+    let cli_str = toml::to_string_pretty(config)
         .context("Cannot serialise config")?;
+    let cli_table: toml::Table = toml::from_str(&cli_str)
+        .context("Cannot parse serialised config as TOML table")?;
+
+    // Merge: CLI keys overwrite; unknown keys ([lsp], [window], [cli], etc.) survive.
+    for (k, v) in cli_table {
+        merged.insert(k, v);
+    }
+
+    let content = toml::to_string_pretty(&merged)
+        .context("Cannot serialise merged config")?;
+
     let mut tmp_path = path.clone();
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -337,7 +426,7 @@ pub fn save_config(config: &EditorConfig) -> anyhow::Result<()> {
         .and_then(|name| name.to_str())
         .unwrap_or("config.toml");
     tmp_path.set_file_name(format!(".{file_name}.tmp-{}-{nanos}", std::process::id()));
-    std::fs::write(&tmp_path, content)
+    std::fs::write(&tmp_path, &content)
         .with_context(|| format!("Cannot write temp config: {}", tmp_path.display()))?;
     std::fs::rename(&tmp_path, &path)
         .with_context(|| format!("Cannot replace config atomically: {}", path.display()))?;
@@ -580,6 +669,81 @@ color_mode = "neon"
         assert!(config.is_none());
         assert!(message.is_none());
         assert!(!path.exists());
+
+        if let Some(home) = previous_home {
+            set_env_var("HOME", home);
+        } else {
+            remove_env_var("HOME");
+        }
+        if let Some(xdg) = previous_xdg {
+            set_env_var("XDG_CONFIG_HOME", xdg);
+        } else {
+            remove_env_var("XDG_CONFIG_HOME");
+        }
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn load_config_removes_legacy_config_dir_and_creates_new_default() {
+        let _guard = env_lock().lock().expect("env test mutex");
+        let root = temp_path("legacy-migrate");
+        let previous_home = std::env::var_os("HOME");
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        set_env_var("HOME", &root);
+        remove_env_var("XDG_CONFIG_HOME");
+
+        let legacy_dir = legacy_config_dir().expect("legacy dir");
+        std::fs::create_dir_all(&legacy_dir).expect("legacy config dir");
+        std::fs::write(legacy_dir.join("config.toml"), "[editor]\nline_numbers = false\n")
+            .expect("legacy config write");
+
+        let (config, note) = load_config();
+        let current_path = config_path().expect("config path");
+
+        assert!(config.editor.line_numbers);
+        assert!(current_path.exists());
+        assert!(!legacy_dir.exists());
+        let note = note.expect("migration note");
+        assert!(note.contains("Config reset"));
+        assert!(note.contains(LEGACY_DISPLAY_CONFIG_DIR));
+        assert!(note.contains(DISPLAY_CONFIG_PATH));
+
+        if let Some(home) = previous_home {
+            set_env_var("HOME", home);
+        } else {
+            remove_env_var("HOME");
+        }
+        if let Some(xdg) = previous_xdg {
+            set_env_var("XDG_CONFIG_HOME", xdg);
+        } else {
+            remove_env_var("XDG_CONFIG_HOME");
+        }
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn save_config_removes_legacy_config_dir() {
+        let _guard = env_lock().lock().expect("env test mutex");
+        let root = temp_path("legacy-save");
+        let previous_home = std::env::var_os("HOME");
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        set_env_var("HOME", &root);
+        remove_env_var("XDG_CONFIG_HOME");
+
+        let legacy_dir = legacy_config_dir().expect("legacy dir");
+        std::fs::create_dir_all(&legacy_dir).expect("legacy config dir");
+        std::fs::write(legacy_dir.join("config.toml"), "[editor]\nline_numbers = false\n")
+            .expect("legacy config write");
+
+        save_config(&EditorConfig::default()).expect("save config");
+
+        let current_path = config_path().expect("config path");
+        assert!(current_path.exists());
+        assert!(!legacy_dir.exists());
 
         if let Some(home) = previous_home {
             set_env_var("HOME", home);

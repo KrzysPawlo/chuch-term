@@ -1,12 +1,12 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.6-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.7-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.94+-orange)
 
 A minimal terminal editor for developers.
 
-`0.6.6` is the current patch release in the `0.6 LTS` line: exact-save fidelity, grapheme-correct editing, stronger search/replace behavior, and broader DevOps file coverage.
+`0.6.7` is the current patch release in the `0.6 LTS` line: tighter config handling, a more robust managed launcher alias, and further trust polish for everyday terminal use.
 
 ```bash
 chuch-term file.rs
@@ -49,7 +49,7 @@ It stays intentionally small:
 - line numbers, relative numbers, go-to-line, duplicate line
 - shortcut profiles (`ctrl` and `alt`) with per-action overrides
 - live settings overlay and dedicated shortcut editor
-- managed personal command alias in `~/.local/bin`
+- managed personal command launcher in `~/.local/bin`
 - atomic file saves and atomic config writes
 - valid-only config hot reloads
 
@@ -230,8 +230,8 @@ brew uninstall chuch-term
 `--uninstall` removes:
 
 - the current binary
-- the canonical config directory `~/.config/chuch-term/`
-- the managed personal alias symlink if it exists and points to the current binary
+- the chuch-term config directories under `~/.config`
+- the managed personal alias launcher if it exists
 
 It does not delete unrelated files or arbitrary shell aliases.
 
@@ -239,7 +239,7 @@ It does not delete unrelated files or arbitrary shell aliases.
 
 ## Configuration
 
-On first run, `chuch-term` creates `~/.config/chuch-term/config.toml`:
+On first run, `chuch-term` creates `~/.config/chuch/config.toml`:
 
 ```toml
 [editor]

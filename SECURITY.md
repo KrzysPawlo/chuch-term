@@ -7,7 +7,7 @@
 | 0.6.x   | ✅        |
 | < 0.6   | ❌        |
 
-The current supported patch in the `0.6 LTS` line is `0.6.6`.
+The current supported patch in the `0.6 LTS` line is `0.6.7`.
 
 ## Reporting a Vulnerability
 
@@ -20,7 +20,7 @@ Please report security issues via GitHub Issues with the label `security`.
 - **No network access** — zero outbound connections, no HTTP clients, no telemetry
 - **No remote data collection** — no analytics, no crash reporting, no usage tracking
 - **No external API calls** — all operations are local file system reads and writes
-- **No credentials stored** — the config file (`~/.config/chuch-term/config.toml`) contains only editor preferences
+- **No credentials stored** — the config file (`~/.config/chuch/config.toml`) contains only editor preferences
 - **Atomic file saves** — uses a tmp → rename pattern to prevent data loss on crash
 - **Clipboard integration** — uses system-provided tools (`pbcopy`, `wl-copy`, `xclip`) as subprocesses; no clipboard daemon is installed
 - **No privilege escalation** — the binary itself never calls `sudo` or elevates permissions

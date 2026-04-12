@@ -5,6 +5,7 @@ use anyhow::{Context as _, Result, bail};
 
 pub const CANONICAL_COMMAND: &str = "chuch-term";
 pub const ALIAS_BIN_DIR_DISPLAY: &str = "~/.local/bin";
+const MANAGED_ALIAS_MARKER: &str = "# Managed by chuch-term";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AliasStatusKind {
@@ -113,9 +114,7 @@ pub fn alias_status(command: &crate::config::CommandSection) -> AliasStatus {
                 AliasStatus {
                     kind: AliasStatusKind::Installed,
                     label: "installed".to_string(),
-                    detail: format!(
-                        "Alias '{alias}' points to the current chuch-term binary."
-                    ),
+                    detail: format!("Alias '{alias}' launches chuch-term through the managed launcher."),
                 }
             } else {
                 AliasStatus {
@@ -128,11 +127,18 @@ pub fn alias_status(command: &crate::config::CommandSection) -> AliasStatus {
                 }
             }
         }
+        AliasInstallState::StaleManaged => AliasStatus {
+            kind: AliasStatusKind::ConfiguredNotInstalled,
+            label: "needs reinstall".to_string(),
+            detail: format!(
+                "Alias '{alias}' uses the older managed format and should be reinstalled from Settings."
+            ),
+        },
         AliasInstallState::Conflict => AliasStatus {
             kind: AliasStatusKind::Conflict,
             label: "conflict".to_string(),
             detail: format!(
-                "Alias path {} already exists and is not the managed symlink for the current binary.",
+                "Alias path {} already exists and is not the managed chuch-term alias entry.",
                 alias_path.display()
             ),
         },
@@ -200,9 +206,13 @@ pub(crate) fn install_alias_at(alias: &str, current_exe: &Path, alias_dir: &Path
         AliasInstallState::Installed => {
             return Ok(format!("Alias '{alias}' is already installed."));
         }
+        AliasInstallState::StaleManaged => {
+            std::fs::remove_file(&alias_path)
+                .with_context(|| format!("Cannot replace managed alias {}", alias_path.display()))?;
+        }
         AliasInstallState::Conflict => {
             bail!(
-                "Alias path {} already exists and is not managed by this chuch-term binary.",
+                "Alias path {} already exists and is not a managed chuch-term alias entry.",
                 alias_path.display()
             );
         }
@@ -214,12 +224,27 @@ pub(crate) fn install_alias_at(alias: &str, current_exe: &Path, alias_dir: &Path
 
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(current_exe, &alias_path)
-            .with_context(|| format!("Cannot create alias symlink {}", alias_path.display()))?;
-        Ok(format!(
-            "Installed alias '{alias}' at {}.",
-            alias_path.display()
-        ))
+        std::fs::write(&alias_path, managed_alias_script().as_bytes())
+            .with_context(|| format!("Cannot write alias launcher {}", alias_path.display()))?;
+        let mut perms = std::fs::metadata(&alias_path)
+            .with_context(|| format!("Cannot inspect alias launcher {}", alias_path.display()))?
+            .permissions();
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&alias_path, perms)
+            .with_context(|| format!("Cannot mark alias launcher executable {}", alias_path.display()))?;
+        if path_contains(alias_dir) {
+            Ok(format!(
+                "Installed alias '{alias}' at {}. If the current shell does not see it yet, reopen the shell or run 'hash -r'.",
+                alias_path.display()
+            ))
+        } else {
+            Ok(format!(
+                "Installed alias '{alias}' at {}. Add {} to PATH in ~/.zshrc or ~/.bashrc, then reopen the shell.",
+                alias_path.display(),
+                alias_dir.display()
+            ))
+        }
     }
 
     #[cfg(not(unix))]
@@ -233,13 +258,13 @@ pub(crate) fn remove_alias_at(alias: &str, current_exe: &Path, alias_dir: &Path)
     let alias_path = alias_dir.join(alias);
     match alias_install_state(&alias_path, Some(current_exe)) {
         AliasInstallState::Missing => Ok(format!("Alias '{alias}' is not installed.")),
-        AliasInstallState::Installed => {
+        AliasInstallState::Installed | AliasInstallState::StaleManaged => {
             std::fs::remove_file(&alias_path)
                 .with_context(|| format!("Cannot remove alias {}", alias_path.display()))?;
             Ok(format!("Removed alias '{alias}' from {}.", alias_path.display()))
         }
         AliasInstallState::Conflict => bail!(
-            "Refusing to remove {} because it is not the managed alias for the current binary.",
+            "Refusing to remove {} because it is not a managed chuch-term alias entry.",
             alias_path.display()
         ),
         AliasInstallState::Unknown => bail!("Cannot inspect alias path {}.", alias_path.display()),
@@ -250,6 +275,7 @@ pub(crate) fn remove_alias_at(alias: &str, current_exe: &Path, alias_dir: &Path)
 enum AliasInstallState {
     Missing,
     Installed,
+    StaleManaged,
     Conflict,
     Unknown,
 }
@@ -259,41 +285,109 @@ fn alias_install_state(alias_path: &Path, current_exe: Option<&Path>) -> AliasIn
         return AliasInstallState::Missing;
     }
 
-    match current_exe {
-        Some(current_exe) => match is_managed_alias_target(alias_path, current_exe) {
-            Ok(true) => AliasInstallState::Installed,
-            Ok(false) => AliasInstallState::Conflict,
-            Err(_) => AliasInstallState::Unknown,
-        },
-        None => AliasInstallState::Unknown,
+    match inspect_alias_path(alias_path, current_exe) {
+        Ok(AliasPathKind::Missing) => AliasInstallState::Missing,
+        Ok(AliasPathKind::ManagedWrapper | AliasPathKind::LegacyManagedSymlinkCurrent) => {
+            AliasInstallState::Installed
+        }
+        Ok(AliasPathKind::LegacyManagedSymlinkStale) => AliasInstallState::StaleManaged,
+        Ok(AliasPathKind::Conflict) => AliasInstallState::Conflict,
+        Err(_) => AliasInstallState::Unknown,
     }
 }
 
 fn is_managed_alias_target(alias_path: &Path, current_exe: &Path) -> Result<bool> {
+    Ok(matches!(
+        inspect_alias_path(alias_path, Some(current_exe))?,
+        AliasPathKind::ManagedWrapper
+            | AliasPathKind::LegacyManagedSymlinkCurrent
+            | AliasPathKind::LegacyManagedSymlinkStale
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AliasPathKind {
+    Missing,
+    ManagedWrapper,
+    LegacyManagedSymlinkCurrent,
+    LegacyManagedSymlinkStale,
+    Conflict,
+}
+
+fn inspect_alias_path(alias_path: &Path, current_exe: Option<&Path>) -> Result<AliasPathKind> {
     let metadata = match std::fs::symlink_metadata(alias_path) {
         Ok(metadata) => metadata,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(AliasPathKind::Missing),
         Err(err) => return Err(err).with_context(|| format!("Cannot stat {}", alias_path.display())),
     };
-    if !metadata.file_type().is_symlink() {
-        return Ok(false);
+
+    if metadata.file_type().is_symlink() {
+        return inspect_symlink_alias(alias_path, current_exe);
     }
 
+    if metadata.is_file() && is_managed_alias_wrapper(alias_path)? {
+        return Ok(AliasPathKind::ManagedWrapper);
+    }
+
+    Ok(AliasPathKind::Conflict)
+}
+
+fn inspect_symlink_alias(alias_path: &Path, current_exe: Option<&Path>) -> Result<AliasPathKind> {
     let link_target = std::fs::read_link(alias_path)
         .with_context(|| format!("Cannot read alias symlink {}", alias_path.display()))?;
+    let target_name = link_target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+
+    if target_name != CANONICAL_COMMAND {
+        return Ok(AliasPathKind::Conflict);
+    }
+
+    match current_exe {
+        Some(current_exe) => {
+            let resolved_target = resolve_symlink_target(alias_path, &link_target);
+            let current_exe = canonicalize_if_exists(current_exe);
+            if let (Some(resolved_target), Some(current_exe)) = (resolved_target, current_exe) {
+                if resolved_target == current_exe {
+                    Ok(AliasPathKind::LegacyManagedSymlinkCurrent)
+                } else {
+                    Ok(AliasPathKind::LegacyManagedSymlinkStale)
+                }
+            } else {
+                Ok(AliasPathKind::LegacyManagedSymlinkStale)
+            }
+        }
+        None => Ok(AliasPathKind::LegacyManagedSymlinkStale),
+    }
+}
+
+fn resolve_symlink_target(alias_path: &Path, link_target: &Path) -> Option<PathBuf> {
     let resolved_target = if link_target.is_absolute() {
-        link_target
+        link_target.to_path_buf()
     } else {
         alias_path
             .parent()
             .unwrap_or_else(|| Path::new("/"))
             .join(link_target)
     };
-    let resolved_target = std::fs::canonicalize(&resolved_target)
-        .with_context(|| format!("Cannot resolve alias target {}", alias_path.display()))?;
-    let current_exe = std::fs::canonicalize(current_exe)
-        .with_context(|| format!("Cannot resolve current executable {}", current_exe.display()))?;
-    Ok(resolved_target == current_exe)
+    canonicalize_if_exists(&resolved_target)
+}
+
+fn canonicalize_if_exists(path: &Path) -> Option<PathBuf> {
+    std::fs::canonicalize(path).ok()
+}
+
+fn managed_alias_script() -> String {
+    format!(
+        "#!/bin/sh\n{MANAGED_ALIAS_MARKER}\nexec {CANONICAL_COMMAND} \"$@\"\n"
+    )
+}
+
+fn is_managed_alias_wrapper(alias_path: &Path) -> Result<bool> {
+    let content = std::fs::read_to_string(alias_path)
+        .with_context(|| format!("Cannot read alias launcher {}", alias_path.display()))?;
+    Ok(content == managed_alias_script())
 }
 
 fn path_contains(dir: &Path) -> bool {
@@ -326,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn installs_and_removes_managed_alias_symlink() {
+    fn installs_and_removes_managed_alias_launcher() {
         let root = temp_root("install");
         let alias_dir = root.join("bin");
         let exe = root.join("chuch-term");
@@ -336,6 +430,8 @@ mod tests {
         let install = install_alias_at("cct", &exe, &alias_dir).expect("install");
         assert!(install.contains("Installed alias 'cct'"));
         assert!(alias_dir.join("cct").exists());
+        let script = std::fs::read_to_string(alias_dir.join("cct")).expect("alias script");
+        assert_eq!(script, managed_alias_script());
 
         let remove = remove_alias_at("cct", &exe, &alias_dir).expect("remove");
         assert!(remove.contains("Removed alias 'cct'"));
@@ -356,7 +452,7 @@ mod tests {
         let err = install_alias_at("cct", &exe, &alias_dir).expect_err("conflict expected");
         assert!(err
             .to_string()
-            .contains("already exists and is not managed"));
+            .contains("already exists and is not a managed"));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -365,5 +461,52 @@ mod tests {
     fn detects_alias_bin_dir_from_home() {
         let dir = alias_bin_dir_from_home(Some(OsString::from("/tmp/home"))).expect("alias dir");
         assert_eq!(dir, PathBuf::from("/tmp/home/.local/bin"));
+    }
+
+    #[test]
+    fn refreshes_stale_legacy_symlink_alias_on_install() {
+        let root = temp_root("refresh");
+        let alias_dir = root.join("bin");
+        let cellar_old = root.join("Cellar").join("0.6.6").join("bin");
+        let cellar_new = root.join("Cellar").join("0.6.7").join("bin");
+        let old_exe = cellar_old.join(CANONICAL_COMMAND);
+        let new_exe = cellar_new.join(CANONICAL_COMMAND);
+        std::fs::create_dir_all(&alias_dir).expect("alias dir");
+        std::fs::create_dir_all(&cellar_old).expect("old cellar");
+        std::fs::create_dir_all(&cellar_new).expect("new cellar");
+        std::fs::write(&old_exe, "old").expect("old exe");
+        std::fs::write(&new_exe, "new").expect("new exe");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&old_exe, alias_dir.join("cct")).expect("legacy alias");
+
+        let install = install_alias_at("cct", &new_exe, &alias_dir).expect("install");
+        assert!(install.contains("Installed alias 'cct'"));
+        let script = std::fs::read_to_string(alias_dir.join("cct")).expect("alias script");
+        assert_eq!(script, managed_alias_script());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removes_stale_legacy_symlink_alias() {
+        let root = temp_root("remove-stale");
+        let alias_dir = root.join("bin");
+        let cellar_old = root.join("Cellar").join("0.6.6").join("bin");
+        let cellar_new = root.join("Cellar").join("0.6.7").join("bin");
+        let old_exe = cellar_old.join(CANONICAL_COMMAND);
+        let new_exe = cellar_new.join(CANONICAL_COMMAND);
+        std::fs::create_dir_all(&alias_dir).expect("alias dir");
+        std::fs::create_dir_all(&cellar_old).expect("old cellar");
+        std::fs::create_dir_all(&cellar_new).expect("new cellar");
+        std::fs::write(&old_exe, "old").expect("old exe");
+        std::fs::write(&new_exe, "new").expect("new exe");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&old_exe, alias_dir.join("cct")).expect("legacy alias");
+
+        let remove = remove_alias_at("cct", &new_exe, &alias_dir).expect("remove");
+        assert!(remove.contains("Removed alias 'cct'"));
+        assert!(!alias_dir.join("cct").exists());
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

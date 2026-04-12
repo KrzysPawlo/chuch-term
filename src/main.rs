@@ -184,13 +184,14 @@ fn uninstall() -> Result<()> {
         println!("{message}");
     }
 
-    // Config directory: ~/.config/chuch-term/
-    if let Some(config_file) = config::config_path()
-        && let Some(config_dir) = config_file.parent()
-        && config_dir.exists()
+    for config_dir in [config::config_dir_path(), config::legacy_config_dir()]
+        .into_iter()
+        .flatten()
     {
-        std::fs::remove_dir_all(config_dir)?;
-        println!("Removed config: {}", config_dir.display());
+        if config_dir.exists() {
+            std::fs::remove_dir_all(&config_dir)?;
+            println!("Removed config: {}", config_dir.display());
+        }
     }
 
     // Binary (safe to delete a running executable on Unix — OS keeps the inode alive).
@@ -216,7 +217,7 @@ mod tests {
             requested_color_mode: "auto",
             effective_color_mode: "ansi256",
             color_reason: "Apple Terminal uses ANSI-256 fallback in auto mode for color reliability",
-            config_path: "/tmp/.config/chuch-term/config.toml".to_string(),
+            config_path: "/tmp/.config/chuch/config.toml".to_string(),
             config_exists: true,
             config_note: None,
             using_defaults: false,
@@ -229,7 +230,7 @@ mod tests {
         let output = format_debug_env_report(&sample_report());
 
         assert!(output.contains("Config path"));
-        assert!(output.contains("/tmp/.config/chuch-term/config.toml"));
+        assert!(output.contains("/tmp/.config/chuch/config.toml"));
         assert!(output.contains("Theme.bg_bar"));
         assert!(output.contains("#121212"));
         assert!(output.contains("Editor.bg"));

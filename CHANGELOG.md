@@ -7,6 +7,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-04-12
+
+### Fixed
+- **Managed alias reliability** — personal aliases in `~/.local/bin` are now installed as stable launchers that delegate to `chuch-term` instead of pointing at one concrete executable path, so they survive Homebrew and Linux upgrade paths much more reliably
+- **Legacy alias recovery** — stale managed aliases from the older symlink-based LTS implementation are now recognized as upgradeable/removable instead of getting stuck in a conflict state
+
+### Changed
+- **Canonical config path** — `chuch-term` now uses `~/.config/chuch/config.toml` as its active config file path for the `0.6 LTS` line
+- **Homebrew cleanup behavior** — first run on `0.6.7` removes the old `~/.config/chuch-term/` directory and starts from a clean config at the new path instead of attempting backward-compatible migration
+- **Uninstall cleanup** — `chuch-term --uninstall` now removes both the current config directory and the legacy `~/.config/chuch-term/` directory if it still exists
+
 ## [0.6.6] - 2026-04-09
 
 ### Fixed
