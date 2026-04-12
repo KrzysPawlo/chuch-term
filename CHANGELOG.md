@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-04-12
+
+### Fixed
+- **Terminal paste correctness** — multiline paste from the terminal now uses bracketed-paste events and lands as one raw text insertion instead of being replayed as newline keystrokes that can distort indentation-sensitive content such as YAML
+- **Paste line endings** — bracketed terminal paste now normalizes pasted `CRLF` / `CR` line breaks into normal editor newlines instead of leaving stray carriage returns in the buffer
+- **Paste over selection** — pasted terminal text now replaces the active selection as one undoable edit instead of layering on top of the current range state
+
 ## [0.6.7] - 2026-04-12
 
 ### Fixed

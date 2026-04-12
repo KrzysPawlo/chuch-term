@@ -1,12 +1,12 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.7-b0c4c8)
+![version](https://img.shields.io/badge/version-0.6.8-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.94+-orange)
 
 A minimal terminal editor for developers.
 
-`0.6.7` is the current patch release in the `0.6 LTS` line: tighter config handling, a more robust managed launcher alias, and further trust polish for everyday terminal use.
+`0.6.8` is the current patch release in the `0.6 LTS` line: robust multiline paste handling, tighter config behavior, and a more reliable managed launcher alias.
 
 ```bash
 chuch-term file.rs

@@ -7,7 +7,7 @@
 | 0.6.x   | ✅        |
 | < 0.6   | ❌        |
 
-The current supported patch in the `0.6 LTS` line is `0.6.7`.
+The current supported patch in the `0.6 LTS` line is `0.6.8`.
 
 ## Reporting a Vulnerability
 

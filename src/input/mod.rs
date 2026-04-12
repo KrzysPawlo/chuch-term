@@ -30,6 +30,12 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
             }
             return Ok(());
         }
+        Event::Paste(text) => {
+            if state.mode == EditorMode::Normal {
+                apply_pasted_text(state, &text);
+            }
+            return Ok(());
+        }
         _ => return Ok(()),
     };
 
@@ -402,14 +408,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
             };
             state.status_message = status;
             if !text.is_empty() {
-                let cursor_before = state.cursor;
-                let change = build_change(
-                    (cursor_before.row, cursor_before.col),
-                    String::new(),
-                    text,
-                    cursor_before,
-                );
-                apply_and_record_change(state, change, false);
+                apply_pasted_text(state, &text);
             }
         }
 
@@ -1324,6 +1323,50 @@ fn clamp_cursor_to_buffer(state: &mut EditorState) {
         state.buffer.clamp_position(state.cursor.row, state.cursor.col);
 }
 
+fn apply_pasted_text(state: &mut EditorState, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+
+    let text = normalize_pasted_text(text);
+    let cursor_before = state.cursor;
+    let replacement_end = if let Some((start, _)) = state.selection_range() {
+        let (row, col) = TextBuffer::position_after(start, &text);
+        Cursor { row, col }
+    } else {
+        let (row, col) = TextBuffer::position_after((cursor_before.row, cursor_before.col), &text);
+        Cursor { row, col }
+    };
+
+    let change = if let Some((start, end)) = state.selection_range() {
+        build_change_with_cursor(
+            start,
+            state.buffer.text_in_range(start, end),
+            text,
+            cursor_before,
+            replacement_end,
+        )
+    } else {
+        build_change_with_cursor(
+            (cursor_before.row, cursor_before.col),
+            String::new(),
+            text,
+            cursor_before,
+            replacement_end,
+        )
+    };
+
+    apply_and_record_change(state, change, false);
+    state.selection_anchor = None;
+}
+
+fn normalize_pasted_text(text: &str) -> String {
+    if !text.contains('\r') {
+        return text.to_string();
+    }
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 fn clipboard_copy_status(
     strategy: &str,
     result: crate::clipboard::ClipboardCopyResult,
@@ -1397,6 +1440,69 @@ mod tests {
 
         apply_action(&mut state, AppAction::Redo).expect("redo");
         assert_eq!(state.buffer.lines, vec!["hello".to_string(), "world".to_string()]);
+    }
+
+    #[test]
+    fn bracketed_paste_inserts_multiline_text_without_auto_indent_drift() {
+        let mut state = state_with_lines(&["root:"]);
+        state.cursor = Cursor { row: 0, col: 5 };
+        state.config.editor.auto_indent = true;
+
+        handle_event(
+            Event::Paste("\n  child: 1\n  sibling: 2".to_string()),
+            &mut state,
+        )
+        .expect("paste event");
+
+        assert_eq!(
+            state.buffer.lines,
+            vec![
+                "root:".to_string(),
+                "  child: 1".to_string(),
+                "  sibling: 2".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn bracketed_paste_normalizes_crlf_sequences() {
+        let mut state = state_with_lines(&[""]);
+        state.cursor = Cursor { row: 0, col: 0 };
+
+        handle_event(
+            Event::Paste("a:\r\n  b: 1\r\n  c: 2\r".to_string()),
+            &mut state,
+        )
+        .expect("paste event");
+
+        assert_eq!(
+            state.buffer.lines,
+            vec![
+                "a:".to_string(),
+                "  b: 1".to_string(),
+                "  c: 2".to_string(),
+                "".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn bracketed_paste_replaces_active_selection_as_one_change() {
+        let mut state = state_with_lines(&["env: prod"]);
+        state.selection_anchor = Some(Cursor { row: 0, col: 5 });
+        state.cursor = Cursor { row: 0, col: 9 };
+
+        handle_event(
+            Event::Paste("stage".to_string()),
+            &mut state,
+        )
+        .expect("paste event");
+
+        assert_eq!(state.buffer.lines, vec!["env: stage".to_string()]);
+        assert!(state.selection_anchor.is_none());
+
+        apply_action(&mut state, AppAction::Undo).expect("undo");
+        assert_eq!(state.buffer.lines, vec!["env: prod".to_string()]);
     }
 
     #[test]
