@@ -594,7 +594,7 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
                 let cursor_before = state.cursor;
                 let replacements = state.search_results.len();
                 let mut ordered = state.search_results.clone();
-                ordered.sort_by(|left, right| (right.row, right.start).cmp(&(left.row, left.start)));
+                ordered.sort_by_key(|left| std::cmp::Reverse((left.row, left.start)));
                 let mut changes = Vec::with_capacity(ordered.len());
 
                 for found in ordered {
