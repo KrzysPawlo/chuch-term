@@ -359,6 +359,10 @@ cargo test --locked
 cargo clippy --locked -- -D warnings
 ```
 
+All changes land through a pull request; `main` is protected by a no-bypass GitHub ruleset
+requiring the full CI pipeline (version contract, tests, Clippy, `cargo audit`, `cargo deny`)
+to pass — including for the repository owner.
+
 ---
 
 ## License

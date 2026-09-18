@@ -6,6 +6,7 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   # Default GITHUB_TOKEN scope for CI jobs; release jobs widen this to contents: write.
@@ -22,7 +23,7 @@ jobs:
     outputs:
       cargo_version: ${{ steps.version.outputs.cargo_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: version
         shell: bash
         run: |
@@ -44,9 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: cargo test --locked
 
   contract:
@@ -54,11 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: cargo test --locked
 
   lint:
@@ -66,11 +67,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: cargo clippy --locked -- -D warnings
 
   audit:
@@ -78,9 +79,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: cargo install cargo-audit --locked
       - run: cargo audit
 
@@ -89,8 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: version
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902 # v2
 
   build:
     name: Build / ${{ matrix.asset }}
@@ -112,13 +113,13 @@ jobs:
             asset: macos-intel
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
 
       - name: Install musl tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
@@ -135,7 +136,7 @@ jobs:
           tar czf "chuch-term-${{ matrix.asset }}.tar.gz" chuch-term
           mv "chuch-term-${{ matrix.asset }}.tar.gz" ../../../
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chuch-term-${{ matrix.asset }}
           path: |
@@ -150,14 +151,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             artifacts/*.tar.gz
@@ -240,6 +241,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Require tap push token
         shell: bash
@@ -249,18 +251,18 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: main
           path: main-repo
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: KrzysPawlo/homebrew-chuch
           token: ${{ secrets.HOMEBREW_CHUCH_PUSH_TOKEN }}
           path: homebrew-chuch
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
           merge-multiple: true
@@ -294,17 +296,26 @@ jobs:
 
       - name: Commit main repo formula
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd main-repo
           if git diff --quiet -- packaging/homebrew/chuch-term.rb; then
             exit 0
           fi
 
+          branch="chore/homebrew-sync-v${{ needs.version.outputs.cargo_version }}"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
           git add packaging/homebrew/chuch-term.rb
-          git commit -m "chore: sync Homebrew formula for v${{ needs.version.outputs.cargo_version }} [skip ci]"
-          git push origin HEAD:main
+          git commit -m "chore: sync Homebrew formula for v${{ needs.version.outputs.cargo_version }}"
+          git push origin "${branch}"
+
+          gh pr create --base main --head "${branch}" \
+            --title "chore: sync Homebrew formula for v${{ needs.version.outputs.cargo_version }}" \
+            --body "Automated formula sync for the v${{ needs.version.outputs.cargo_version }} release. \`main\` is protected and this PR was opened with the default \`GITHUB_TOKEN\`, so its checks won't start automatically — run \`gh workflow run pipeline.yml --ref ${branch}\` once, wait for it to go green, then merge normally."
 
       - name: Commit tap repo formula
         shell: bash

@@ -74,13 +74,11 @@ impl<'a> Widget for LineNumbersGutter<'a> {
                 area.left()
             };
 
-            let mut x = x_start;
-            for ch in num_str.chars() {
+            for (x, ch) in (x_start..).zip(num_str.chars()) {
                 if x >= area.right().saturating_sub(1) {
                     break;
                 }
                 buf[(x, y)].set_char(ch).set_style(style);
-                x += 1;
             }
         }
     }
