@@ -240,11 +240,9 @@ fn render_compact(area: Rect, buf: &mut Buffer, accent: Color, overlay_bg: Color
     let y = area.top() + area.height / 2;
     let x = area.left().saturating_add(area.width.saturating_sub(msg_len) / 2);
     let style = Style::default().fg(accent).bg(overlay_bg);
-    let mut cx = x;
-    for ch in msg.chars() {
+    for (cx, ch) in (x..).zip(msg.chars()) {
         if cx >= area.right() { break; }
         buf[(cx, y)].set_char(ch).set_style(style);
-        cx += 1;
     }
 }
 
