@@ -36,8 +36,9 @@ profile = "ctrl"
 # help = "b"
 
 [command]
-# Optional personal alias installed into ~/.local/bin via Settings -> Install alias
-alias = ""
+# Personal alias installed into ~/.local/bin, auto-installed on startup.
+# Set to "" and remove it from Settings if you don't want an alias at all.
+alias = "ct"
 
 [render]
 # "auto" = stable default, "rgb" = force 24-bit colours, "ansi256" = force 256-colour fallback
@@ -194,10 +195,22 @@ pub struct ShortcutsSection {
     pub overrides: std::collections::BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandSection {
-    #[serde(default)]
+    #[serde(default = "default_command_alias")]
     pub alias: String,
+}
+
+impl Default for CommandSection {
+    fn default() -> Self {
+        Self {
+            alias: default_command_alias(),
+        }
+    }
+}
+
+fn default_command_alias() -> String {
+    "ct".to_string()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -524,7 +537,7 @@ mod tests {
         assert!(content.contains("[theme]"));      // theme section is now present
         assert!(content.contains("accent"));
         assert!(content.contains("[command]"));
-        assert!(content.contains("alias = \"\""));
+        assert!(content.contains("alias = \"ct\""));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -805,7 +818,7 @@ alias = "plik.txt"
 
         let (config, warning) = load_config_from_path(&path);
 
-        assert!(config.command.alias.is_empty());
+        assert_eq!(config.command.alias, "ct");
         assert!(
             warning
                 .expect("alias warning")

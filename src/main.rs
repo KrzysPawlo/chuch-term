@@ -41,7 +41,27 @@ fn main() -> Result<()> {
         print_debug_env();
         return Ok(());
     }
+    ensure_default_alias_installed();
     app::run(args.file)
+}
+
+/// Auto-install the configured alias (default "ct") into `~/.local/bin` if it
+/// is configured but not installed yet. Best-effort and silent: a failure
+/// here (unsupported platform, path conflict, missing HOME, ...) must never
+/// block the editor from starting — Settings still shows accurate alias
+/// status and offers manual install/remove.
+fn ensure_default_alias_installed() {
+    let (config, _) = crate::config::load_config();
+    if config.command.alias.trim().is_empty() {
+        return;
+    }
+    let status = crate::command_alias::alias_status(&config.command);
+    if status.kind != crate::command_alias::AliasStatusKind::ConfiguredNotInstalled {
+        return;
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        let _ = crate::command_alias::install_alias(&config.command, &current_exe);
+    }
 }
 
 fn parse_args(bin_name: &str) -> Args {
