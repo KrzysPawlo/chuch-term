@@ -1,4 +1,7 @@
-use super::buffer::{next_grapheme_boundary, prev_grapheme_boundary, TextBuffer};
+use super::buffer::{
+    byte_for_display_col, display_col_for_byte, next_grapheme_boundary, prev_grapheme_boundary,
+    TextBuffer,
+};
 
 /// Cursor position in the buffer.
 /// `col` is a byte offset into the line string (not a character or display index).
@@ -86,6 +89,17 @@ impl Cursor {
         self.row = next as usize;
         self.clamp(buf);
     }
+
+    /// Move by `delta` display columns on the current row (negative moves
+    /// left), clamped to the line's start/end. Used for horizontal
+    /// mouse-wheel/trackpad scrolling.
+    pub fn move_display_cols(&mut self, buf: &TextBuffer, delta: i64) {
+        self.clamp(buf);
+        let line = buf.line(self.row);
+        let current_display_col = display_col_for_byte(line, self.col) as i64;
+        let next_display_col = (current_display_col + delta).max(0) as usize;
+        self.col = byte_for_display_col(line, next_display_col).min(line.len());
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -165,6 +179,30 @@ mod tests {
         let mut c = Cursor { row: 1, col: 0 };
         c.move_rows(&b, -5);
         assert_eq!(c.row, 0);
+    }
+
+    #[test]
+    fn move_display_cols_right_advances_within_line() {
+        let b = buf(&["hello world"]);
+        let mut c = Cursor { row: 0, col: 0 };
+        c.move_display_cols(&b, 6);
+        assert_eq!(c.col, 6);
+    }
+
+    #[test]
+    fn move_display_cols_left_clamps_to_zero() {
+        let b = buf(&["hello world"]);
+        let mut c = Cursor { row: 0, col: 3 };
+        c.move_display_cols(&b, -10);
+        assert_eq!(c.col, 0);
+    }
+
+    #[test]
+    fn move_display_cols_right_clamps_to_line_end() {
+        let b = buf(&["hi"]);
+        let mut c = Cursor { row: 0, col: 0 };
+        c.move_display_cols(&b, 50);
+        assert_eq!(c.col, 2);
     }
 
     #[test]

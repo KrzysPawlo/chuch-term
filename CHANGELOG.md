@@ -7,6 +7,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-19
+
+### Fixed
+- **Horizontal mouse-wheel/trackpad scrolling did nothing** — `0.8.0` wired up vertical `ScrollUp`/`ScrollDown` but not the horizontal `ScrollLeft`/`ScrollRight` events crossterm reports for horizontal wheels and trackpad side-scroll gestures. Added `Cursor::move_display_cols()` and wired both directions, reusing the same per-frame `scroll_to_cursor_horizontal()` clamp added in `0.8.0`.
+
 ## [0.8.0] - 2026-09-19
 
 ### Added
