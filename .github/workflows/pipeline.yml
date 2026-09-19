@@ -318,6 +318,10 @@ jobs:
             --body "Automated formula sync for the v${{ needs.version.outputs.cargo_version }} release. \`main\` is protected and this PR was opened with the default \`GITHUB_TOKEN\`, so its checks won't start automatically — run \`gh workflow run pipeline.yml --ref ${branch}\` once, wait for it to go green, then merge normally."
 
       - name: Commit tap repo formula
+        # Independent of the main-repo PR step above: the tap push uses its own
+        # PAT and doesn't need a PR, so a failure there (e.g. missing Actions
+        # PR-creation permission) must not silently skip this step too.
+        if: success() || failure()
         shell: bash
         run: |
           cd homebrew-chuch
