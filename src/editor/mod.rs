@@ -119,6 +119,18 @@ pub struct EditorState {
 
     // ── Previous buffer (for GoBackBuffer after OpenConfig) ───────────────
     pub previous_buffer: Option<(TextBuffer, Cursor)>,
+
+    /// Set by the event loop before dispatching a key event: true when the
+    /// terminal already has another event ready to read with zero wait.
+    ///
+    /// A real Enter keypress is never immediately followed by more buffered
+    /// input; a paste delivered as raw keys (terminals/multiplexers that do
+    /// not honor bracketed paste) floods the input queue faster than the
+    /// draw loop can drain it. We use this as a burst signal to suppress
+    /// `InsertNewline` auto-indent, which otherwise duplicates the pasted
+    /// text's own leading whitespace on every line (breaking JSON/YAML
+    /// indentation). See `apply_action`'s `InsertNewline` arm.
+    pub pending_input_burst: bool,
 }
 
 impl EditorState {
@@ -185,6 +197,7 @@ impl EditorState {
             palette,
             config_mtime,
             previous_buffer: None,
+            pending_input_burst: false,
         }
     }
 

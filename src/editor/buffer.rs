@@ -390,12 +390,23 @@ impl TextBuffer {
     // ──────────────────────────────────────────────────────────────────
 
     /// Save the buffer to its file path using an atomic tmp → rename.
+    ///
+    /// Preserves the target file's existing permissions (if any) on the tmp
+    /// file before the rename, so saving a file with restrictive permissions
+    /// (e.g. 600 on a secrets/config file) does not silently widen it to the
+    /// process umask default.
     pub fn save(&mut self) -> Result<()> {
         let path = self.file_path.as_ref().context("No file path — use save_as")?;
         let content = self.serialized_bytes();
         let tmp_path = temp_save_path(path);
+        let original_permissions = std::fs::metadata(path).ok().map(|meta| meta.permissions());
         std::fs::write(&tmp_path, &content)
             .with_context(|| format!("Cannot write tmp file: {}", tmp_path.display()))?;
+        if let Some(permissions) = original_permissions {
+            std::fs::set_permissions(&tmp_path, permissions).with_context(|| {
+                format!("Cannot set permissions on tmp file: {}", tmp_path.display())
+            })?;
+        }
         std::fs::rename(&tmp_path, path)
             .with_context(|| format!("Cannot rename tmp to: {}", path.display()))?;
         self.dirty = false;
@@ -808,6 +819,33 @@ mod tests {
         buffer.save().expect("save");
 
         assert_eq!(std::fs::read(&path).expect("read"), b"alpha");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_preserves_restrictive_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let path = std::env::temp_dir().join(format!(
+            "chuch-term-buffer-permissions-{}-{}-secret.toml",
+            std::process::id(),
+            unique
+        ));
+        std::fs::write(&path, b"token = 1").expect("write fixture");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .expect("set restrictive permissions");
+
+        let mut buffer = TextBuffer::from_file(&path).expect("load");
+        buffer.insert_char(0, 9, '0'); // dirty the buffer so save has something to do
+        buffer.save().expect("save");
+
+        let mode = std::fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "save must not widen existing file permissions");
         let _ = std::fs::remove_file(&path);
     }
 
