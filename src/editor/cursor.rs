@@ -77,6 +77,15 @@ impl Cursor {
         self.row = (self.row + rows).min(max_row);
         self.clamp(buf);
     }
+
+    /// Move by `delta` rows (negative moves up), clamped to the buffer's row
+    /// range. Used for mouse-wheel scrolling.
+    pub fn move_rows(&mut self, buf: &TextBuffer, delta: i64) {
+        let max_row = buf.line_count().saturating_sub(1) as i64;
+        let next = (self.row as i64 + delta).clamp(0, max_row.max(0));
+        self.row = next as usize;
+        self.clamp(buf);
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -140,6 +149,22 @@ mod tests {
         let mut c = Cursor { row: 0, col: 0 };
         c.page_down(&b, 20);
         assert_eq!(c.row, 2);
+    }
+
+    #[test]
+    fn move_rows_down_clamps_to_last_line() {
+        let b = buf(&["a", "b", "c"]);
+        let mut c = Cursor { row: 1, col: 0 };
+        c.move_rows(&b, 5);
+        assert_eq!(c.row, 2);
+    }
+
+    #[test]
+    fn move_rows_up_clamps_to_zero() {
+        let b = buf(&["a", "b", "c"]);
+        let mut c = Cursor { row: 1, col: 0 };
+        c.move_rows(&b, -5);
+        assert_eq!(c.row, 0);
     }
 
     #[test]

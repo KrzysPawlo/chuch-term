@@ -12,6 +12,9 @@ use crate::editor::history::{HistoryEntry, TextChange};
 use crate::editor::{Cursor, EditorMode, EditorState, LineNumberMode, SearchMatch, TextBuffer};
 use crate::shortcuts::{ActiveShortcuts, KeyToken, ShortcutAction, ShortcutProfile};
 
+/// Number of rows moved per mouse-wheel scroll tick.
+const MOUSE_SCROLL_STEP: i64 = 3;
+
 /// Translate a crossterm Event into an AppAction and apply it to the editor state.
 pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
     let action = match event {
@@ -32,6 +35,14 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
                     MouseEventKind::Drag(MouseButton::Left) => {
                         // A drag always extends the selection from wherever it started.
                         handle_mouse_click(mouse_event.column, mouse_event.row, state, true);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        state.selection_anchor = None;
+                        state.cursor.move_rows(&state.buffer, MOUSE_SCROLL_STEP);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        state.selection_anchor = None;
+                        state.cursor.move_rows(&state.buffer, -MOUSE_SCROLL_STEP);
                     }
                     _ => {}
                 }
@@ -1252,8 +1263,9 @@ fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState,
         .min(state.buffer.line_count().saturating_sub(1));
 
     let rel_col = (screen_col - state.editor_area_left) as usize;
+    let display_col = state.viewport.offset_col + rel_col;
     let line = state.buffer.line(buf_row);
-    let byte_pos = byte_for_display_col(line, rel_col).min(line.len());
+    let byte_pos = byte_for_display_col(line, display_col).min(line.len());
 
     if extend {
         if state.selection_anchor.is_none() {
@@ -2088,6 +2100,65 @@ mod tests {
 
         // Releasing the button finalizes the selection without clearing it.
         assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 5 });
+    }
+
+    #[test]
+    fn mouse_scroll_down_moves_cursor_row_without_selecting() {
+        let mut state = state_with_lines(&["a", "b", "c", "d", "e", "f", "g"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.selection_anchor = Some(Cursor { row: 0, col: 0 });
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 4,
+                row: 2,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("scroll down");
+
+        assert_eq!(state.cursor.row, 3); // MOUSE_SCROLL_STEP == 3
+        assert!(state.selection_anchor.is_none());
+    }
+
+    #[test]
+    fn mouse_scroll_up_moves_cursor_row_and_clamps_to_zero() {
+        let mut state = state_with_lines(&["a", "b", "c", "d"]);
+        state.cursor = Cursor { row: 1, col: 0 };
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollUp,
+                column: 4,
+                row: 2,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("scroll up");
+
+        assert_eq!(state.cursor.row, 0);
+    }
+
+    #[test]
+    fn mouse_click_uses_horizontal_viewport_offset() {
+        let mut state = state_with_lines(&["0123456789abcdef"]);
+        state.viewport.offset_col = 5;
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 2, // rel_col 0, shifted by offset_col 5 -> byte col 5
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse down");
+
         assert_eq!(state.cursor, Cursor { row: 0, col: 5 });
     }
 

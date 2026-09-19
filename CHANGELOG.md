@@ -7,6 +7,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-19
+
+### Added
+- **Horizontal scrolling for long lines** — the editor viewport now tracks a horizontal offset and keeps the cursor's column visible, instead of silently truncating a line at the terminal's width with no way to see or reach the rest of it.
+- **Mouse-wheel scrolling** — `ScrollUp`/`ScrollDown` now move the viewport (3 lines per tick) without requiring a click or arrow keys.
+
 ## [0.7.0] - 2026-09-19
 
 ### Fixed

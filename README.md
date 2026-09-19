@@ -1,6 +1,6 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.7.0-b0c4c8)
+![version](https://img.shields.io/badge/version-0.8.0-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.94+-orange)
 
@@ -50,6 +50,7 @@ It stays intentionally small:
 - incremental search and replace
 - unlimited undo / redo
 - selection plus system clipboard support, including click-drag and Shift+click mouse selection
+- mouse-wheel scrolling and horizontal scrolling for lines wider than the terminal
 - line numbers, relative numbers, go-to-line, duplicate line
 - shortcut profiles (`ctrl` and `alt`) with per-action overrides
 - live settings overlay and dedicated shortcut editor
