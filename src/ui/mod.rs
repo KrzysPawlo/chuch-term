@@ -68,6 +68,12 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
     state.editor_area_right = editor_area.right();
     state.editor_area_bottom = editor_area.bottom();
 
+    // Keep the cursor's column visible for lines wider than the editor area.
+    let cursor_display_col = EditorView::cursor_display_col(state) as usize;
+    state
+        .viewport
+        .scroll_to_cursor_horizontal(cursor_display_col, editor_area.width as usize);
+
     // ── Render base layers ─────────────────────────────────────────────
     if let Some(g_area) = gutter_area {
         frame.render_widget(LineNumbersGutter { state }, g_area);
@@ -128,8 +134,9 @@ pub fn draw(frame: &mut Frame, state: &mut EditorState) {
     let cursor_screen_row = state.cursor.row.saturating_sub(state.viewport.offset_row);
 
     if cursor_screen_row < viewport_height {
-        let display_col = EditorView::cursor_display_col(state);
-        let screen_x = editor_area.left() + display_col.min(editor_area.width.saturating_sub(1));
+        let display_col = EditorView::cursor_display_col(state) as usize;
+        let rel_col = display_col.saturating_sub(state.viewport.offset_col);
+        let screen_x = editor_area.left() + (rel_col as u16).min(editor_area.width.saturating_sub(1));
         let screen_y = editor_area.top() + cursor_screen_row as u16;
         frame.set_cursor_position((screen_x, screen_y));
     }

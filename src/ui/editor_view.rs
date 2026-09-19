@@ -98,10 +98,16 @@ fn render_buffer(state: &EditorState, area: Rect, buf: &mut Buffer) {
 
             let mut x = area.left();
             let mut display_cols = 0usize;
+            let h_offset = state.viewport.offset_col;
 
             for (byte_pos, grapheme) in line.grapheme_indices(true) {
                 let grapheme_width = crate::editor::buffer::grapheme_display_width(grapheme);
-                if display_cols + grapheme_width > width || x >= area.right() {
+                if display_cols < h_offset {
+                    display_cols += grapheme_width;
+                    continue;
+                }
+                let rel_display_col = display_cols - h_offset;
+                if rel_display_col + grapheme_width > width || x >= area.right() {
                     break;
                 }
 
