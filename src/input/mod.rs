@@ -3,7 +3,7 @@ pub mod keybindings;
 pub use keybindings::{map_key, AppAction};
 
 use anyhow::Result;
-use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 
 use crate::editor::buffer::{
     byte_for_display_col, grapheme_slice, next_grapheme_boundary, prev_grapheme_boundary,
@@ -23,10 +23,18 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
         }
         Event::Resize(_, _) => return Ok(()),
         Event::Mouse(mouse_event) => {
-            if state.mode == EditorMode::Normal
-                && matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
-            {
-                handle_mouse_click(mouse_event.column, mouse_event.row, state);
+            if state.mode == EditorMode::Normal {
+                match mouse_event.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let extend = mouse_event.modifiers.contains(KeyModifiers::SHIFT);
+                        handle_mouse_click(mouse_event.column, mouse_event.row, state, extend);
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) => {
+                        // A drag always extends the selection from wherever it started.
+                        handle_mouse_click(mouse_event.column, mouse_event.row, state, true);
+                    }
+                    _ => {}
+                }
             }
             return Ok(());
         }
@@ -214,7 +222,12 @@ fn apply_action(state: &mut EditorState, action: AppAction) -> Result<()> {
 
         InsertNewline => {
             let cursor_before = state.cursor;
-            let indent = if state.config.editor.auto_indent {
+            // Suppress auto-indent while a burst of raw keys is already queued: it
+            // means this Enter is very likely part of a paste delivered as plain
+            // keystrokes (no bracketed-paste support), whose lines already carry
+            // their own indentation. Copying the current line's indent on top of
+            // that would compound with every line, breaking JSON/YAML structure.
+            let indent = if state.config.editor.auto_indent && !state.pending_input_burst {
                 let line = state.buffer.line(cursor_before.row);
                 let up_to_cursor = &line[..state.buffer.clamp_column(cursor_before.row, cursor_before.col)];
                 up_to_cursor
@@ -1222,8 +1235,10 @@ fn shortcut_policy_hint(action: ShortcutAction) -> &'static str {
 
 // ── Mouse helpers ──────────────────────────────────────────────────────
 
-/// Translate a left-click at absolute terminal coordinates into a cursor move.
-fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState) {
+/// Translate a left-click or left-drag at absolute terminal coordinates into a
+/// cursor move. When `extend` is true (Shift held, or any drag) the existing
+/// selection is preserved/started instead of cleared, mirroring Shift+arrow.
+fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState, extend: bool) {
     // Ignore clicks outside the editor area.
     if screen_row < state.editor_area_top
         || screen_row >= state.editor_area_bottom
@@ -1240,9 +1255,16 @@ fn handle_mouse_click(screen_col: u16, screen_row: u16, state: &mut EditorState)
     let line = state.buffer.line(buf_row);
     let byte_pos = byte_for_display_col(line, rel_col).min(line.len());
 
+    if extend {
+        if state.selection_anchor.is_none() {
+            state.selection_anchor = Some(state.cursor);
+        }
+    } else {
+        state.selection_anchor = None; // clear any selection on a plain click
+    }
+
     state.cursor.row = buf_row;
     state.cursor.col = byte_pos;
-    state.selection_anchor = None; // clear any selection on click
     state.cursor.clamp(&state.buffer);
 }
 
@@ -1411,7 +1433,7 @@ mod tests {
     use super::*;
     use crate::config::EditorConfig;
     use crate::editor::TextBuffer;
-    use crossterm::event::{KeyModifiers, MouseEvent};
+    use crossterm::event::MouseEvent;
 
     fn state_with_lines(lines: &[&str]) -> EditorState {
         let mut state = EditorState::new_empty();
@@ -1503,6 +1525,62 @@ mod tests {
 
         apply_action(&mut state, AppAction::Undo).expect("undo");
         assert_eq!(state.buffer.lines, vec!["env: prod".to_string()]);
+    }
+
+    /// Feeds `text` in as individual raw `KeyEvent`s (as a terminal/multiplexer
+    /// without bracketed-paste support would deliver a paste), marking every
+    /// event as part of an input burst except the very last one — matching how
+    /// the real event loop only sees the queue drain on the final character.
+    fn type_raw_key_burst(state: &mut EditorState, text: &str) {
+        let chars: Vec<char> = text.chars().collect();
+        for (idx, ch) in chars.iter().enumerate() {
+            state.pending_input_burst = idx + 1 < chars.len();
+            let event = if *ch == '\n' {
+                Event::Key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Enter,
+                    KeyModifiers::NONE,
+                ))
+            } else {
+                Event::Key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char(*ch),
+                    KeyModifiers::NONE,
+                ))
+            };
+            handle_event(event, state).expect("raw key event");
+        }
+    }
+
+    #[test]
+    fn raw_key_paste_burst_does_not_duplicate_json_indentation() {
+        let mut state = state_with_lines(&[""]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.config.editor.auto_indent = true;
+
+        // A terminal/multiplexer without bracketed-paste support delivers this
+        // as a flood of plain KeyEvents rather than one Event::Paste.
+        type_raw_key_burst(&mut state, "{\n  \"a\": 1,\n  \"b\": 2\n}");
+
+        assert_eq!(
+            state.buffer.lines,
+            vec![
+                "{".to_string(),
+                "  \"a\": 1,".to_string(),
+                "  \"b\": 2".to_string(),
+                "}".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn manual_typing_still_gets_auto_indent_outside_a_burst() {
+        let mut state = state_with_lines(&["    hello"]);
+        state.cursor = Cursor { row: 0, col: 9 };
+        state.config.editor.auto_indent = true;
+        state.pending_input_burst = false;
+
+        apply_action(&mut state, AppAction::InsertNewline).expect("newline");
+
+        assert_eq!(state.buffer.lines[1], "    ");
     }
 
     #[test]
@@ -1923,6 +2001,94 @@ mod tests {
                 col: "A👨‍👩‍👧‍👦".len(),
             }
         );
+    }
+
+    #[test]
+    fn shift_click_extends_selection_from_existing_cursor() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 7, // editor_area_left (2) + rel_col 5
+                row: 1,
+                modifiers: KeyModifiers::SHIFT,
+            }),
+            &mut state,
+        )
+        .expect("shift+click");
+
+        assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 5 });
+    }
+
+    #[test]
+    fn shift_click_with_existing_selection_moves_only_the_cursor_end() {
+        let mut state = state_with_lines(&["hello world"]);
+        state.cursor = Cursor { row: 0, col: 3 };
+        state.selection_anchor = Some(Cursor { row: 0, col: 0 });
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 2 + 8,
+                row: 1,
+                modifiers: KeyModifiers::SHIFT,
+            }),
+            &mut state,
+        )
+        .expect("shift+click");
+
+        // Anchor stays put; only the live end of the selection moves.
+        assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 8 });
+    }
+
+    #[test]
+    fn mouse_drag_extends_selection_from_click_start() {
+        let mut state = state_with_lines(&["hello world"]);
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 2, // rel_col 0
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse down");
+        assert!(state.selection_anchor.is_none());
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Left),
+                column: 2 + 5,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse drag");
+
+        assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 5 });
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Up(MouseButton::Left),
+                column: 2 + 5,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("mouse up");
+
+        // Releasing the button finalizes the selection without clearing it.
+        assert_eq!(state.selection_anchor, Some(Cursor { row: 0, col: 0 }));
+        assert_eq!(state.cursor, Cursor { row: 0, col: 5 });
     }
 
     #[test]

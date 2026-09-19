@@ -80,6 +80,10 @@ fn event_loop(
         // Wait for next event (with a timeout so we can do periodic checks).
         if event::poll(Duration::from_millis(500))? {
             let ev = event::read()?;
+            // Another event already queued with zero wait means this one is
+            // very likely part of a fast input burst (raw-key paste fallback)
+            // rather than a deliberate single keystroke.
+            state.pending_input_burst = event::poll(Duration::from_secs(0)).unwrap_or(false);
             handle_event(ev, state)?;
         }
 
