@@ -12,7 +12,7 @@ use crate::editor::history::{HistoryEntry, TextChange};
 use crate::editor::{Cursor, EditorMode, EditorState, LineNumberMode, SearchMatch, TextBuffer};
 use crate::shortcuts::{ActiveShortcuts, KeyToken, ShortcutAction, ShortcutProfile};
 
-/// Number of rows moved per mouse-wheel scroll tick.
+/// Number of rows/columns moved per mouse-wheel or trackpad scroll tick.
 const MOUSE_SCROLL_STEP: i64 = 3;
 
 /// Translate a crossterm Event into an AppAction and apply it to the editor state.
@@ -43,6 +43,14 @@ pub fn handle_event(event: Event, state: &mut EditorState) -> Result<()> {
                     MouseEventKind::ScrollUp => {
                         state.selection_anchor = None;
                         state.cursor.move_rows(&state.buffer, -MOUSE_SCROLL_STEP);
+                    }
+                    MouseEventKind::ScrollRight => {
+                        state.selection_anchor = None;
+                        state.cursor.move_display_cols(&state.buffer, MOUSE_SCROLL_STEP);
+                    }
+                    MouseEventKind::ScrollLeft => {
+                        state.selection_anchor = None;
+                        state.cursor.move_display_cols(&state.buffer, -MOUSE_SCROLL_STEP);
                     }
                     _ => {}
                 }
@@ -2141,6 +2149,46 @@ mod tests {
         .expect("scroll up");
 
         assert_eq!(state.cursor.row, 0);
+    }
+
+    #[test]
+    fn mouse_scroll_right_moves_cursor_col_without_selecting() {
+        let mut state = state_with_lines(&["0123456789abcdefghij"]);
+        state.cursor = Cursor { row: 0, col: 0 };
+        state.selection_anchor = Some(Cursor { row: 0, col: 0 });
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollRight,
+                column: 4,
+                row: 2,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("scroll right");
+
+        assert_eq!(state.cursor.col, 3); // MOUSE_SCROLL_STEP == 3
+        assert!(state.selection_anchor.is_none());
+    }
+
+    #[test]
+    fn mouse_scroll_left_moves_cursor_col_and_clamps_to_zero() {
+        let mut state = state_with_lines(&["0123456789abcdefghij"]);
+        state.cursor = Cursor { row: 0, col: 1 };
+
+        handle_event(
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::ScrollLeft,
+                column: 4,
+                row: 2,
+                modifiers: KeyModifiers::NONE,
+            }),
+            &mut state,
+        )
+        .expect("scroll left");
+
+        assert_eq!(state.cursor.col, 0);
     }
 
     #[test]
