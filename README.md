@@ -1,19 +1,23 @@
 # chuch-term
 
-![version](https://img.shields.io/badge/version-0.6.8-b0c4c8)
+![version](https://img.shields.io/badge/version-0.7.0-b0c4c8)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![rust](https://img.shields.io/badge/rust-1.94+-orange)
 
 A minimal terminal editor for developers.
 
-`0.6.8` is the current patch release in the `0.6 LTS` line: robust multiline paste handling, tighter config behavior, and a more reliable managed launcher alias.
+`0.7.0` moves past the `0.6 LTS` line: `ct` is now the default personal alias and is
+auto-installed on startup, mouse selection supports click-drag and Shift+click, pasted
+text no longer loses its indentation on terminals without bracketed-paste support, and
+file saves now preserve the target file's existing permissions.
 
 ```bash
 chuch-term file.rs
-cct file.rs
+ct file.rs
 ```
 
-`chuch-term` is the canonical command name. `cct` is an example of an optional personal alias you can configure and install from Settings.
+`chuch-term` is the canonical command name. `ct` is the default personal alias, installed
+automatically into `~/.local/bin` on first run; you can change or clear it from Settings.
 
 ---
 
@@ -45,12 +49,12 @@ It stays intentionally small:
 - syntax highlighting for Rust, Python, JavaScript/TypeScript, Go, TOML, YAML, Shell, Markdown, Proto3, logs, and common config files
 - incremental search and replace
 - unlimited undo / redo
-- selection plus system clipboard support
+- selection plus system clipboard support, including click-drag and Shift+click mouse selection
 - line numbers, relative numbers, go-to-line, duplicate line
 - shortcut profiles (`ctrl` and `alt`) with per-action overrides
 - live settings overlay and dedicated shortcut editor
-- managed personal command launcher in `~/.local/bin`
-- atomic file saves and atomic config writes
+- default `ct` personal command launcher, auto-installed in `~/.local/bin`
+- atomic file saves (permission-preserving) and atomic config writes
 - valid-only config hot reloads
 
 ---
@@ -69,10 +73,10 @@ Start an empty buffer:
 chuch-term
 ```
 
-If you prefer a shorter launch command, set a personal alias such as `cct` in Settings and install it:
+`ct` is installed automatically on first run, so it works out of the box:
 
 ```bash
-cct notes.txt
+ct notes.txt
 ```
 
 ---
@@ -93,7 +97,7 @@ The editor is not modal. The current keymap is always the source of truth, and t
 
 ### Shortcut profiles
 
-`0.6 LTS` starts with the `ctrl` profile by default.
+chuch-term starts with the `ctrl` profile by default.
 
 You can:
 
@@ -105,19 +109,20 @@ Help, hints, command palette, and settings all render the active bindings from t
 
 ### Personal command alias
 
-You can configure one optional personal alias:
+`chuch-term` ships with one personal alias configured by default:
 
 ```toml
 [command]
-alias = "cct"
+alias = "ct"
 ```
 
 Important rules:
 
 - `chuch-term` stays the canonical package and binary name
 - the alias is additive, not a rename
-- the app never installs or removes the alias automatically just because config changed
-- alias install/remove is explicit from Settings
+- the default `ct` alias is installed into `~/.local/bin` automatically on startup
+- set `alias = ""` (and remove the installed launcher from Settings) if you don't want one
+- changing `alias` to a different name is picked up and auto-installed on the next startup
 - managed aliases are installed only into `~/.local/bin`
 
 Valid alias names use lowercase ASCII letters, digits, `_`, and `-`.
@@ -263,7 +268,7 @@ profile = "ctrl"
 # help = "b"
 
 [command]
-alias = ""
+alias = "ct"
 
 [render]
 color_mode = "auto"
@@ -335,7 +340,7 @@ color_mode = "auto"
 - On macOS, Apple Command Line Tools or Xcode are required for Cargo-based builds/install
 - If CLT are already present, updating them via `softwareupdate` is usually enough
 
-Managed command aliases in this LTS pass are supported on Unix-like systems only.
+Managed command aliases (including the default `ct`) are supported on Unix-like systems only.
 
 ---
 

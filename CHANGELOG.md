@@ -7,6 +7,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+### Fixed
+- **Paste indentation drift on raw-key paste** — terminals/multiplexers without bracketed-paste support deliver a paste as plain keystrokes; auto-indent was copying the current line's indentation onto every pasted line on top of the pasted content's own indentation, compounding and breaking JSON/YAML structure. Auto-indent is now suppressed while a burst of already-queued input is detected.
+- **Mouse selection** — click-drag and Shift+click now extend the text selection; previously only a plain left-click was handled, which always cleared the selection and left drag-select and Shift+click non-functional.
+- **File permissions on save** — atomic save (tmp write + rename) now preserves the target file's existing permissions instead of silently widening a restrictive mode (e.g. `600` on a secrets/config file) to the process umask default after the first edit.
+
+### Changed
+- **Default command alias is now `ct`** — installed automatically into `~/.local/bin` on startup when configured but missing. `chuch-term` remains the canonical binary/package name; this is a deliberate break from the previous "alias is explicit-only" contract.
+- Dependency bumps: `serde` 1.0.229, `regex` 1.13.1, `ratatui` 0.30.2, `base64` 0.23, `toml` 1.1; `actions/checkout` v7.0.1, `actions/download-artifact` v8.0.1, `actions/upload-artifact` v7.0.1, `softprops/action-gh-release` v3.0.3, `Swatinem/rust-cache` pinned-SHA refresh.
+
 ## [0.6.8] - 2026-04-12
 
 ### Fixed
